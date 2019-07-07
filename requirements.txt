@@ -1,0 +1,7 @@
+matplotlib
+pandas
+pyyaml
+dash
+dash-bootstrap-components
+Flask-Session
+python-memcached

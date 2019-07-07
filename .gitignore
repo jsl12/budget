@@ -1,0 +1,12 @@
+
+.ipynb_checkpoints
+*.pkl
+*.sublime-project
+*.sublime-workspace
+*.egg-info
+*.pyc
+.idea
+__pycache__
+venv
+dev
+test.db
