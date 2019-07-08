@@ -4,7 +4,7 @@ import numpy as np
 from . import utils
 
 
-def flatten_mask_tree(mask_tree: Dict[str, Union[Dict, str]]) -> Dict[str]:
+def flatten_mask_tree(mask_tree: Dict[str, Union[Dict, str]]) -> Dict[str, pd.Series]:
     '''
     Walks through the mask_tree using recursive_items() and builds a resultant dictionary by summarizing the portion of
     the tree below each node.

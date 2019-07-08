@@ -8,7 +8,7 @@ from ..processing import sum_duplicates
 
 class Loader:
     def __init__(self, accounts_cfg: Dict):
-        self.cfg = accounts_cfg
+        self.cfg = accounts_cfg.copy()
         self.validate_cfg()
         self.logger = logging.getLogger(__name__)
 

@@ -96,12 +96,6 @@ class BudgetData:
             return self._df.fillna('')
 
     @property
-    def selections(self):
-        if not hasattr(self, '_sel'):
-            self.init_selections()
-        return self._sel
-
-    @property
     def id(self):
         return self._df['id']
 
@@ -112,7 +106,7 @@ class BudgetData:
 
     @property
     def unselected(self):
-        return ~self.selections.any(axis=1)
+        return ~self._sel.any(axis=1)
 
     @property
     def notes(self):
@@ -136,7 +130,7 @@ class BudgetData:
         self.debug(f'Loading CSV files from {self.yaml_path.name}')
         self._df = Loader(self.cfg['Loading']['Accounts']).load_all_accounts()
 
-    def init_selections(self):
+    def process_categories(self):
         self.debug(f'Processing selections as defined in {self.yaml_path.name}')
         # Warnings need to be filtered out because there's groups in the regex matching down in there
         with warnings.catch_warnings():
@@ -186,7 +180,7 @@ class BudgetData:
         with self.sql_context() as con:
             self.note_manager.load_notes(con)
         self.load_csv()
-        self.init_selections()
+        self.process_categories()
         self.save_sql()
 
     def search(self, query: str) -> pd.Series:

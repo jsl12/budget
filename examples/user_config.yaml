@@ -1,0 +1,58 @@
+Loading:              # required key
+  db: username.db     # path to the user's SQL database. It doesn't have to already exist
+  Accounts:                               # required key
+    Checking:
+      folder: ..\examples\Statements\Checking           # path to the folder with the statements in it, required
+      file regex: 'checking'                            # optional regex to filer the filenames
+    Credit Card 1:
+      folder: ..\examples\Statements\Credit Card 1
+      skiprows: 2                                       # option to skip rows when reading the CSV file
+    Credit Card 2:
+      folder: ..\examples\Statements\Credit Card 2
+      header:                                           # option to specify the lack of headers in the CSV file
+      columns:                                          # definition of where the necessary columns are because of the lack of headers
+        date: 0
+        desc: 4
+        amount: 1
+
+Categories:           # required key
+  Salary:
+    - [direct, dep]   # lists of strings get logically ANDed together. This means that both 'direct' AND 'dep' must be matched
+  Bills:
+#    individual strings get logically ORed together. This means that anything with either 'rent' OR 'apartment' will be matched
+    Rent:
+      - rent
+      - apartment
+    Electric:
+      - 'city of'
+    Monthly:
+      - netflix
+      - spotify
+  Food and Drink:
+    - 'bar(?!(clay)|(ber))'       # regex patterns can be used. This pattern matches 'bar' but not 'barber' or 'barclay'
+#    https://docs.python.org/3/library/re.html
+    - pub
+    - cafe
+    - brew
+    - saloon
+    - grill
+    - Pizza:
+        - pizza
+        - [via, 313]
+  Travel:
+    Rideshare:
+      - uber
+    Airfare:
+      - airline
+      - united
+      - southwes
+      - [american, air]
+      - [delta, air]
+    Hotels:
+      - hotel
+    Parking:
+      - parking
+    Other:
+      - metro
+  Other Spending:
+    - amazon
