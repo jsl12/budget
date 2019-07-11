@@ -1,10 +1,13 @@
 import logging
 import re
-import pandas as pd
 from pathlib import Path
 from typing import Dict
-from ..utils import hash
+
+import pandas as pd
+
 from ..processing import sum_duplicates
+from ..utils import hash
+
 
 class Loader:
     def __init__(self, accounts_cfg: Dict):

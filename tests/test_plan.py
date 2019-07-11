@@ -1,42 +1,50 @@
 import logging
 import unittest
-import pandas as pd
-from budget import plan
 from datetime import datetime, timedelta
+
+import pandas as pd
+
+from budget import plan
+from budget.plan.utils import date_range, parse_date
 
 logging.basicConfig(level=logging.DEBUG)
 
 
-class TestPlan(unittest.TestCase):
+class TestSimplePlan(unittest.TestCase):
     def setUp(self) -> None:
         initial = [
             ('Checking', 5000.00),
             ('Credit Card 1', -500.00),
             ('Credit Card 2', -1000.00),
             ('Credit Card 3', -2000.00),
-            ('Paycheck', 2000.00, datetime.combine(datetime.today().date(), datetime.min.time()), '2W'),
-            ('Burn rate', -20, datetime.today(),'1D')
+            ('Paycheck', 2000.00, None, '2W'),
+            ('Food and Drink', -250, None, '1W'),
+            ('Rent', -1000, None, 'MS'),
+            ('Clothing', -1000, None, '1y'),
+            ('Car Note', -300, datetime.today() + timedelta(days=2), '1m')
         ]
         self.plan = plan.SimplePlan([plan.Expense(*args) for args in initial])
 
     def test_add(self):
-        self.plan.add_expense(plan.Expense('Burn rate', -250, recur='1W'))
-        # self.plan.print_exp()
+        self.plan.add_expense(plan.Expense('Burn rate', -250, None, recur='1W'))
+        return
 
     def test_project(self):
-        self.plan.add_expense(plan.Expense('Burn rate', -250, datetime.today() + timedelta(weeks=1), recur='1W'))
-        df = self.plan.project(datetime.today() + timedelta(days=30))
+        df = self.plan.project(start=datetime.today(), end=100)
+        df = self.plan.project(end=750)
+        monthly = df[df['Name'] == 'Car Note']
+        self.assertEqual(monthly.index[0].month+1, monthly.index[1].month)
         return
 
     def test_linearize(self):
-        res = self.plan.linearize(datetime.today() + timedelta(days=30))
+        res = self.plan.linearize(end=90)
         return
 
     def test_date_parse(self):
-        self.assertIsInstance(plan.parse_date('07/3/2019'), datetime)
-        self.assertIsInstance(plan.parse_date('2019-07-13'), datetime)
-        self.assertIsInstance(plan.parse_date('7-3'), datetime)
-        self.assertIsInstance(plan.parse_date('07/3'), datetime)
+        self.assertIsInstance(parse_date('07/3/2019'), datetime)
+        self.assertIsInstance(parse_date('2019-07-13'), datetime)
+        self.assertIsInstance(parse_date('7-3'), datetime)
+        self.assertIsInstance(parse_date('07/3'), datetime)
 
     def test_to_df(self):
         self.assertIsInstance(self.plan.df, pd.DataFrame)
@@ -44,12 +52,12 @@ class TestPlan(unittest.TestCase):
     def test_date_range(self):
         today = datetime.combine(datetime.today().date(), datetime.min.time())
 
-        mr = plan.month_range_day(today, 6)
+        mr = plan.utils.month_range_day(today, 6)
         self.assertIsInstance(mr, pd.DatetimeIndex)
 
         end = today + timedelta(days=62)
         for f in ['1m', '2w', '4d']:
-            mr = plan.date_range(today, end, freq=f)
+            mr = date_range(today, end, freq=f)
             self.assertIsInstance(mr, pd.DatetimeIndex)
             self.assertEqual(today.day, mr[0].day)
 

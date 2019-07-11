@@ -1,6 +1,7 @@
 import unittest
-import gen
 from unittest import TestCase
+
+import gen
 
 
 class SQLTestCase(TestCase):

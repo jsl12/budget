@@ -1,6 +1,8 @@
 import unittest
-import pandas as pd
+
 import gen
+import pandas as pd
+
 
 class SelectTest(unittest.TestCase):
     def setUp(self) -> None:

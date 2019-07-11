@@ -1,8 +1,11 @@
 import unittest
-import budget
-import gen
-from unittest import TestCase
 from pathlib import Path
+from unittest import TestCase
+
+import gen
+
+import budget
+
 
 class NoteTestCase(TestCase):
     def setUp(self) -> None:

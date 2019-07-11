@@ -1,5 +1,3 @@
-import operator
-from functools import reduce
 import hashlib
 
 def first_item(obj):

@@ -1,16 +1,19 @@
-import pandas as pd
-import warnings
-import sqlite3
-import re
 import logging
+import re
+import sqlite3
+import warnings
+from functools import reduce
 from pathlib import Path
+from typing import List
+
+import pandas as pd
 import yaml
+
 from . import processing
+from .load import Loader
 from .notes import NoteManager
 from .utils import hash
-from .load import Loader
-from functools import reduce
-from typing import List
+
 
 class BudgetData:
     SQL_DF_TABLE = 'transactions'
@@ -50,19 +53,22 @@ class BudgetData:
             # No big deal if it doesn't work
             pass
 
-        # Try selecting based on a category name
-        try:
-            res = self._df[self._sel[input]]
-        except KeyError:
-            pass
+        if isinstance(input, str):
+            # Try selecting based on a category name
+            try:
+                res = self._df[self._sel[input]]
+            except KeyError:
+                raise KeyError(f'\'{input}\' is not a category. Valid categories:' + str(self._sel.columns.tolist()))
+            else:
+                return self.render(res, input)
         else:
-            return self.render(res, input)
-
-        # Try selecting using absolute value position
-        try:
-            return self.render(self._df.iloc[input])
-        except IndexError:
-            pass
+            # Try selecting using absolute value position
+            try:
+                res = self._df.iloc[input]
+            except IndexError:
+                pass
+            else:
+                return self.render(res)
 
         raise TypeError(f'Invalid selection: {type(input)}: {input}')
 

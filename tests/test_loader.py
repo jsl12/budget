@@ -1,11 +1,13 @@
-import unittest
 import logging
+import unittest
+from pathlib import Path
+from unittest import TestCase
+
 import gen
 import pandas as pd
-from unittest import TestCase
-from pathlib import Path
 
 logging.basicConfig(level=logging.DEBUG)
+
 
 class LoaderTest(TestCase):
     def setUp(self) -> None:
