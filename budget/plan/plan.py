@@ -1,13 +1,14 @@
 import logging
 import warnings
+from datetime import datetime
 from pathlib import Path
 
 import matplotlib.pyplot as plt
 import pandas as pd
 import yaml
 
+from . import utils
 from .expense import Expense
-from .utils import compare
 from ..data import BudgetData
 
 logger = logging.getLogger(__name__)
@@ -25,27 +26,57 @@ class BudgetPlan:
         with self.yaml_path.open('r') as file:
             return yaml.load(file, Loader=yaml.SafeLoader)
 
+    @property
+    def daily(self):
+        p = self.cfg['Plan']
+        return round(sum([Expense.from_plan_str(name, p[name]).daily for name in p]), 2)
+
+    @property
+    def weekly(self):
+        return round(self.daily * 7, 2)
+
+    @property
+    def monthly(self):
+        return round(self.daily * 31, 2)
+
     def category_report(self, name: str, date: str = None) -> pd.DataFrame:
         df = self.data[name]
 
         if date is not None:
-            df = df[date]
+            df = df[date:]
 
+        return utils.compare(df, self.get_expense(name).daily)
+
+    def get_expense(self, name: str) -> Expense:
         try:
-            exp = Expense.from_plan_str(name, self.cfg['Plan'][name])
+            return Expense.from_plan_str(name, self.cfg['Plan'][name])
         except KeyError:
             raise KeyError(f'{name} has nothing planned for it')
 
-        return compare(df, exp.daily)
+    def category_plot(self, cat: str, start_date: str = None, end_date: str = None, **kwargs) -> plt.Figure:
+        df = self.data[cat]
 
-    def category_plot(self, name: str, date: str = None) -> plt.Figure:
-        df = self.category_report(name, date)
-        to_plot = df.select_dtypes('number').drop('Amount', axis=1)
+        this_year = datetime.today().strftime('%Y')
+        start_date = start_date or this_year
+        end_date = end_date or this_year
+        df = df[start_date:end_date]
 
-        fig, ax = plt.subplots(figsize=(16, 8))
+        df = utils.prepare_plot_data(df, self.get_expense(cat).daily)
+
+        fig, ax = plt.subplots(**kwargs)
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            ax.plot(to_plot)
+            ax.plot(df)
         ax.grid(True)
-        ax.legend(to_plot.columns)
+        ax.legend(df.columns)
         return fig
+
+    def current(self, cat: str, start_date: str = None) -> float:
+        df = self.data[cat]
+        df = df[start_date or datetime.today().strftime('%Y'):]
+
+        total = df['Amount'].sum()
+        todays_date = datetime.combine(datetime.today(), datetime.min.time())
+        elapsed_days = (todays_date - df.index[0]).days
+        planned = elapsed_days * self.get_expense(cat).daily
+        return round(total - planned, 2)
