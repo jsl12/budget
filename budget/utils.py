@@ -1,5 +1,26 @@
 import hashlib
 
+import pandas as pd
+
+
+def report(df: pd.DataFrame, freq: str = None, avg: int = None) -> pd.DataFrame:
+    if freq is not None:
+        try:
+            df = df.groupby(pd.Grouper(freq=freq)).sum()
+        except ValueError:
+            raise ValueError(f'Invalid frequency: {freq}')
+
+    if avg is not None:
+        try:
+            df = df.rolling(avg).mean()
+        except ValueError:
+            raise ValueError(f'invalid avg period: {avg}')
+
+    df = df.sort_index(ascending=False).applymap(lambda v: round(v, 2))
+
+    return df
+
+
 def first_item(obj):
     if isinstance(obj, list):
         return first_item(obj[0])

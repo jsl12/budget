@@ -12,7 +12,7 @@ import yaml
 from . import processing
 from .load import Loader
 from .notes import NoteManager
-from .utils import hash
+from .utils import hash, report
 
 
 class BudgetData:
@@ -216,7 +216,7 @@ class BudgetData:
         else:
             raise TypeError(f'invalid input for BudgetData.search_notes(): {input}')
 
-    def report(self, selections, timing: str = None, avg_periods: int = None) -> pd.DataFrame:
+    def report(self, selections, freq: str = None, avg: int = None) -> pd.DataFrame:
         if isinstance(selections, str):
             selections = [selections]
 
@@ -228,20 +228,7 @@ class BudgetData:
         except KeyError as e:
             raise KeyError(f'invalid category: {e.args[0]}')
 
-        if timing is not None:
-            try:
-                # https://stackoverflow.com/questions/24082784/pandas-dataframe-groupby-datetime-month
-                res = res.groupby(pd.Grouper(freq=timing)).sum()
-            except ValueError as e:
-                raise ValueError(f'invalid timing for report(): {timing}')
-
-        if avg_periods is not None:
-            try:
-                res = res.rolling(avg_periods).mean()
-            except ValueError as e:
-                raise ValueError(f'invalid avg_periods for report(): {avg_periods}')
-
-        return res.sort_index(ascending=False).applymap(lambda v: round(v, 2))
+        return report(df=res, freq=freq, avg=avg)
 
     def render(self, df: pd.DataFrame, category: str=None) -> pd.DataFrame:
         with warnings.catch_warnings():
