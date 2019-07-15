@@ -5,7 +5,7 @@ from typing import List
 
 import pandas as pd
 
-from .note import Note, Link
+from .note import Note, Link, Category
 from .split import SplitNote, Split
 
 
@@ -124,9 +124,17 @@ class NoteManager:
 
         return render_df
 
+    def apply_manual(self, category: str, full_df: pd.DataFrame) -> pd.DataFrame:
+        ids = [n.id for n in self.get_notes_by_type(Category) if n.category == category]
+        return full_df[full_df['id'].isin(ids)]
+
+    @property
+    def manual_ids(self):
+        return [n.id for n in self.get_notes_by_type(Category)]
+
     @staticmethod
     def parse_note(id: str, input: str, add_note_types=None):
-        note_types = [SplitNote, Link]
+        note_types = [SplitNote, Link, Category]
         if add_note_types is not None:
             try:
                 note_types.append(add_note_types)

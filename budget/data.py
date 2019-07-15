@@ -112,7 +112,7 @@ class BudgetData:
 
     @property
     def unselected(self):
-        return ~self._sel.any(axis=1)
+        return ~self._sel.any(axis=1) & ~self._df['id'].isin(self.note_manager.manual_ids)
 
     @property
     def notes(self):
@@ -230,7 +230,7 @@ class BudgetData:
 
         return report(df=res, freq=freq, avg=avg)
 
-    def render(self, df: pd.DataFrame, category: str=None) -> pd.DataFrame:
+    def render(self, df: pd.DataFrame, category: str = None) -> pd.DataFrame:
         with warnings.catch_warnings():
             warnings.simplefilter('ignore')
 
@@ -240,17 +240,25 @@ class BudgetData:
             # SplitNotes might not have a category assigned to their first part, in which case
             # the value always needs to be modified
             df = self.note_manager.apply_splits(render_df=df, category=None)
+
             if category is not None:
+                # find ids of transactions that are pointed at the current category
                 ids = [s.id for s in self.note_manager.find_splits(category)]
                 df = pd.concat([df, self._df[self.id.isin(ids)]]).sort_index()
+                # apply the split transformations
                 df = self.note_manager.apply_splits(render_df=df, category=category)
+
+            # Apply the linked transactions
             df = self.note_manager.apply_linked(render_df=df, full_df=self._df)
+
+            # Find the manually categorized transactions
+            df = pd.concat([df, self.note_manager.apply_manual(category, self._df)]).sort_index()
             return df.drop('id', axis=1)
 
     def add_note(self, df: pd.DataFrame, note: str) -> None:
         if isinstance(df, pd.Series):
             df = pd.DataFrame(df).transpose()
         df = self.hash_transactions(df)
-        for id in df['id'].values:
-            self.note_manager.add_note(id, note, drop_dups=False)
+        for h in df['id'].values:
+            self.note_manager.add_note(h, note, drop_dups=False)
         self.note_manager.drop_duplicates()

@@ -23,7 +23,14 @@ class Note:
             except AttributeError as e:
                 raise AttributeError(f'note \'{self.note}\' doesn\'t match {self.regex}')
 
+
 @dataclass
 class Link(Note):
     _tag: str = 'link'
     regex: re.Pattern = re.compile(f'{_tag}: ' + '(?P<target>[\d\w]+)$')
+
+
+@dataclass
+class Category(Note):
+    _tag: str = 'cat'
+    regex: re.Pattern = re.compile(f'{_tag}: ' + '(?P<category>.*)$')
