@@ -47,7 +47,7 @@ class SimplePlan:
     def linearize(self, start: datetime = None, end: datetime = None, freq='1D') -> pd.DataFrame:
         return self.project(start, end).reset_index().drop_duplicates(['Date'], keep='last').set_index('Date')['Total'].asfreq(freq, method='pad')
 
-    def project(self, start: datetime = None, end: datetime = None) -> pd.Series:
+    def project(self, start: datetime = None, end: datetime = None) -> pd.DataFrame:
         if start is None:
             start = datetime.today()
         start = datetime.combine(start, datetime.min.time())

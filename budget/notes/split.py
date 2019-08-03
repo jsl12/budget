@@ -40,7 +40,7 @@ class Split:
     def from_str(id, input):
         types = [SplitPercentage, SplitFraction, SplitAmount]
         for split_type in types:
-            match = split_type.regex.match(input)
+            match = split_type.regex.search(input)
             if match is not None:
                 return split_type(id, match)
 
@@ -70,9 +70,9 @@ class SplitFraction(Split):
 
 @dataclass
 class SplitAmount(Split):
-    regex: re.Pattern = re.compile('\$\d+(\.\d+)?')
+    regex: re.Pattern = re.compile('-?\$?\d+(\.\d+)?')
     def __post_init__(self):
-        self.value = float(self.match.group())
+        self.value = float(self.match.group().replace('$', ''))
 
     def modify(self, value: float) -> float:
-        return value
+        return self.value

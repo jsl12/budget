@@ -61,7 +61,8 @@ class BudgetPlan:
         end_date = end_date or this_year
         df = df[start_date:end_date]
 
-        df = utils.prepare_plot_data(df, self.get_expense(cat).daily)
+        daily = self.get_expense(cat).daily
+        df = utils.prepare_plot_data(df, daily, extend=datetime.today())
 
         fig, ax = plt.subplots(**kwargs)
         with warnings.catch_warnings():
@@ -69,6 +70,7 @@ class BudgetPlan:
             ax.plot(df)
         ax.grid(True)
         ax.legend(df.columns)
+        ax.set_title(f'{cat} Expenses, ${daily}/day')
         return fig
 
     def current(self, cat: str, start_date: str = None) -> float:
@@ -80,3 +82,13 @@ class BudgetPlan:
         elapsed_days = (todays_date - df.index[0]).days
         planned = elapsed_days * self.get_expense(cat).daily
         return round(total - planned, 2)
+
+    def days(self, cat: str, start_date: datetime = None) -> float:
+        """
+        Find out how many days ahead/behind you are according to the burn rate for that Expense
+
+        :return:
+        """
+        daily_burn = self.get_expense(cat).daily
+        current = self.current(cat, start_date)
+        return round(-(current / daily_burn), 1)

@@ -12,38 +12,25 @@ class NoteTestCase(TestCase):
         self.bd = gen.gen_bd()
 
     def test_link_notes(self):
-        # add some links
-        self.bd.add_note(self.bd[-1], f'link: {self.bd.id[0]}')
-        self.bd.add_note(self.bd[-2], f'link: {self.bd.id[0]}')
+        self.bd.add_note(self.bd.df.iloc[-1], f'link: {self.bd.id[0]}')
+        self.bd.add_note(self.bd.df.iloc[-2], f'link: {self.bd.id[0]}')
+        self.assertEqual(self.bd['A'].iloc[0]['Amount'], 250.0, 'Link note failed')
+        self.assertEqual(self.bd['B'].iloc[0]['Amount'], 0.0, 'Link note failed')
+        self.assertEqual(self.bd[-1].iloc[0]['Amount'], 0.0, 'Link note failed')
 
-        # Add another transaction to the 'A' category
-        self.bd._sel['A'].iloc[-2] = True
-
-        # df = self.bd._df[self.bd._sel['A']].copy()
-        df = self.bd._df[self.bd._sel['A']]
-        res = self.bd.note_manager.apply_linked(
-            df, self.bd._df
-        )
-
-        self.assertEqual(df.shape, res.shape)
-        self.assertTrue(df.index.equals(res.index))
-        self.assertEqual(res.iloc[0]['Amount'], 250.0)
-        self.assertEqual(res.iloc[-1]['Amount'], 0)
-
-    def test_direct_notes(self):
-        self.bd.add_note(self.bd[0], 'split: 50%, 25% B')
-        self.assertEqual(self.bd['A'].iloc[0]['Amount'], -25.0, 'Direct note failed')
-
-    def test_indirect_notes(self):
-        self.bd.add_note(self.bd.df.iloc[0], 'split: 50% A, 20% B')
-        self.bd.add_note(self.bd.df.iloc[0], 'split: 25% B')
-        self.bd.add_note(self.bd.df.iloc[-1], 'split: 30% B')
-        self.assertEqual(self.bd['A'].iloc[0]['Amount'], -25.0, 'Indirect note failed')
-        self.assertEqual(self.bd['B'].iloc[0]['Amount'], -22.5, 'Indirect note failed')
-        self.assertEqual(self.bd['B'].iloc[-1]['Amount'], -60.0, 'Indirect note failed')
+    def test_split(self):
+        self.bd.add_note(self.bd.df.iloc[0], 'split: 50% B, 10% C')
+        self.bd.add_note(self.bd.df.iloc[1], 'split: $10 C')
+        self.bd.add_note(self.bd.df.iloc[2], 'split: 1/5 C')
+        self.bd.add_note(self.bd.df.iloc[-1], 'split: 50% B, 50% C')
+        self.assertEqual(self.bd['A'].iloc[0]['Amount'], -20.0, 'Indirect note failed')
+        self.assertEqual(self.bd['B'].iloc[0]['Amount'], -25.0, 'Indirect note failed')
+        self.assertEqual(self.bd['B'].iloc[-1]['Amount'], -100.0, 'Indirect note failed')
+        self.assertEqual(self.bd['C'].iloc[1]['Amount'], 10.0, 'Indirect note failed')
+        self.assertEqual(self.bd['C'].iloc[2]['Amount'], 100.0, 'Indirect note failed')
 
     def test_get_notes(self):
-        self.bd.add_note(self.bd[0], 'test note')
+        self.bd.add_note(self.bd.df.iloc[0], 'test note')
         n = self.bd.note_manager.get_notes_by_id([self.bd.id[0]])[0]
         self.assertIsInstance(n, budget.notes.Note)
 

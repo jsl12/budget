@@ -6,3 +6,4 @@ dash-bootstrap-components
 Flask-Session
 python-memcached
 jupyter
+qgrid

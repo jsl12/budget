@@ -12,6 +12,7 @@ import yaml
 from . import processing
 from .load import Loader
 from .notes import NoteManager
+from .notes.note import Category
 from .utils import hash, report
 
 
@@ -112,7 +113,9 @@ class BudgetData:
 
     @property
     def unselected(self):
-        return ~self._sel.any(axis=1) & ~self._df['id'].isin(self.note_manager.manual_ids)
+        return ~self._sel.any(axis=1) & ~self._df['id'].isin(
+            [n.id for n in self.note_manager.get_notes_by_type(Category)]
+        )
 
     @property
     def notes(self):
@@ -182,9 +185,10 @@ class BudgetData:
         '''
         Loads fresh data from CSVs based on the yaml file, processes the yaml categories, and saves everything to the SQL database
         '''
+        # OBSOLETE?
         # need to load the SQL database first to get the notes
-        with self.sql_context() as con:
-            self.note_manager.load_notes(con)
+        # with self.sql_context() as con:
+        #     self.note_manager.load_notes(con)
         self.load_csv()
         self.process_categories()
         self.save_sql()
@@ -231,29 +235,36 @@ class BudgetData:
         return report(df=res, freq=freq, avg=avg)
 
     def render(self, df: pd.DataFrame, category: str = None) -> pd.DataFrame:
+        """
+        Applies any notes that are attached to transactions in the DataFrame. DataFrame needs to have
+        an 'id' column. A category can also be passed in to find additional transactions with a SplitNote
+        attached.
+
+        :param df:
+        :param category:
+        :return:
+        """
         with warnings.catch_warnings():
             warnings.simplefilter('ignore')
 
             if isinstance(df, pd.Series):
                 df = pd.DataFrame(df).transpose()
 
-            # SplitNotes might not have a category assigned to their first part, in which case
-            # the value always needs to be modified
-            df = self.note_manager.apply_splits(render_df=df, category=None)
+            # Append the manually categorized
+            df = df.append(self._df[self.id.isin(self.note_manager.manual_ids(category))])
 
-            if category is not None:
-                # find ids of transactions that are pointed at the current category
-                ids = [s.id for s in self.note_manager.find_splits(category)]
-                df = pd.concat([df, self._df[self.id.isin(ids)]]).sort_index()
-                # apply the split transformations
-                df = self.note_manager.apply_splits(render_df=df, category=category)
+            # Append transactions with relevant SplitNotes attached
+            df = df.append(self._df[self.id.isin(self.note_manager.split_ids(category))])
 
-            # Apply the linked transactions
-            df = self.note_manager.apply_linked(render_df=df, full_df=self._df)
+            # Append the linked
+            df = df.append(self._df[self.id.isin(self.note_manager.linked_ids(df))])
 
-            # Find the manually categorized transactions
-            df = pd.concat([df, self.note_manager.apply_manual(category, self._df)]).sort_index()
-            return df.drop('id', axis=1)
+            # Apply all the notes
+            df = self.note_manager.apply_notes(df, category)
+
+            # Clean up the result
+            df = df.drop('id', axis=1).sort_index()
+            return df
 
     def add_note(self, df: pd.DataFrame, note: str) -> None:
         if isinstance(df, pd.Series):
@@ -262,3 +273,28 @@ class BudgetData:
         for h in df['id'].values:
             self.note_manager.add_note(h, note, drop_dups=False)
         self.note_manager.drop_duplicates()
+
+    def find_by_id(self, id_to_find: str) -> pd.Series:
+        return self._df.reset_index().set_index('id').loc[id_to_find]
+
+    def df_from_ids(self, ids: List[str]) -> pd.DataFrame:
+        df = pd.DataFrame([self.find_by_id(i) for i in ids])
+        df.index.name = 'id'
+        df = df.reset_index()
+        try:
+            return df.set_index('Date')
+        except KeyError:
+            # this will happen if the DataFrame is empty
+            return None
+
+    def df_note_search(self, query: str) -> pd.DataFrame:
+        note_mask = self.notes.str.contains(query, case=False)
+        notes = self._notes[note_mask]
+        df = self.df_from_ids(notes.index)
+        try:
+            df['Note'] = [n.note for n in notes]
+        except TypeError:
+            # Happens when no matching notes are found
+            return None
+        else:
+            return df.drop('id', axis=1)

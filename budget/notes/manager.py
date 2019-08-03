@@ -1,12 +1,11 @@
 import re
-import warnings
 from dataclasses import dataclass
 from typing import List
 
 import pandas as pd
 
 from .note import Note, Link, Category
-from .split import SplitNote, Split
+from .split import SplitNote
 
 
 @dataclass
@@ -62,75 +61,58 @@ class NoteManager:
 
     def get_notes_by_type(self, typ: type) -> List[Note]:
         # doesn't use isinstance() to prevent subtypes from being selected
-        return list(self.notes[self.notes.map(lambda n: type(n) is typ)])
-
-    def find_splits(self, cat=None) -> List[Split]:
-        res = []
-        for n in self.notes[self.notes.map(lambda note: isinstance(note, SplitNote))].values:
-            try:
-                res.append(n.parts[cat])
-            except KeyError:
-                pass
-        return res
-
-    def apply_splits(self, render_df: pd.DataFrame, category: str) -> pd.DataFrame:
-        splits = self.find_splits(category)
-
-        res_vals = render_df.set_index('id')['Amount'].copy()
-        base_vals = res_vals.copy()
-
-        for s in splits:
-            if s.id in res_vals.index:
-                res_vals.loc[s.id] = 0
-
-        for s in splits:
-            try:
-                res_vals.loc[s.id] += s.modify(base_vals.loc[s.id])
-            except KeyError:
-                pass
-
-        render_df['Amount'] = res_vals.values
-        return render_df
-
-    def find_linked(self, id: str) -> List[Link]:
-        '''
-        Get a list of Link notes that target the input id
-        '''
-        return [n for n in self.notes[self.notes.map(lambda n: isinstance(n, Link))].values
-            if n.target == id]
-
-    def apply_linked(self, render_df: pd.DataFrame, full_df: pd.DataFrame) -> pd.DataFrame:
-        amt_col = 'Amount'
-        id_col = 'id'
-        assert id_col in render_df.columns
-        render_vals: pd.Series = render_df.set_index(id_col)[amt_col].copy()
-        original_vals: pd.Series = full_df.set_index(id_col)[amt_col]
-
-        # For each transaction in the input DataFrame
-        for id in render_vals.index.values:
-            # For each note associated with it
-            for note in self.find_linked(id):
-                # Add the value of the linked transaction to the target
-                render_vals.loc[id] += original_vals.loc[note.id]
-                # Set the value of the linked transaction to 0 if it appears in the result
-                if note.id in render_vals.index:
-                    render_vals.loc[note.id] = 0
-
-        # Throws an error for setting values on view, which is actually what we're trying to do
-        # render_df should just be a view of the full_df and the underlying values shouldn't get modified
-        with warnings.catch_warnings():
-            warnings.simplefilter('ignore')
-            render_df[amt_col] = render_vals.to_numpy()
-
-        return render_df
-
-    def apply_manual(self, category: str, full_df: pd.DataFrame) -> pd.DataFrame:
-        ids = [n.id for n in self.get_notes_by_type(Category) if n.category == category]
-        return full_df[full_df['id'].isin(ids)]
+        return [n for n in self.notes.values if type(n) is typ]
 
     @property
-    def manual_ids(self):
-        return [n.id for n in self.get_notes_by_type(Category)]
+    def manual_notes(self):
+        return self.get_notes_by_type(Category)
+
+    @property
+    def split_notes(self):
+        return self.get_notes_by_type(SplitNote)
+
+    @property
+    def link_notes(self):
+        return self.get_notes_by_type(Link)
+
+    def manual_ids(self, cat: str):
+        return [n.id for n in self.manual_notes if n.category == cat]
+
+    def split_ids(self, cat: str) -> List[str]:
+        return [n.id for n in self.split_notes if cat in n.parts]
+
+    def linked_ids(self, df: pd.DataFrame) -> List[str]:
+        return [n.id for n in self.link_notes if n.target in df['id'].values]
+
+    def apply_notes(self, df: pd.DataFrame, cat: str) -> List[str]:
+        relevant_notes = self.get_notes_by_id(df['id'].values)
+        df = df.reset_index().set_index('id')
+
+        for n in relevant_notes:
+            if isinstance(n, SplitNote):
+                original_val = df.loc[n.id, 'Amount']
+                if cat in n.parts:
+                    df.loc[n.id, 'Amount'] = 0
+                    for target, s_obj in n.parts.items():
+                        mod_val = s_obj.modify(original_val)
+                        if target == cat:
+                            df.loc[n.id, 'Amount'] += mod_val
+                else:
+                    for target, s_obj in n.parts.items():
+                        mod_val = s_obj.modify(original_val)
+                        df.loc[n.id, 'Amount'] -= mod_val
+
+            elif isinstance(n, Link):
+                try:
+                    df.loc[n.target, 'Amount'] += df.loc[n.id, 'Amount']
+                except KeyError:
+                    # this happens if a transaction with a Link note attached gets processed, but the transaction it's
+                    # targeting is not
+                    pass
+                df.loc[n.id, 'Amount'] = 0
+
+        df = df.reset_index().set_index(df.columns[0])
+        return df
 
     @staticmethod
     def parse_note(id: str, input: str, add_note_types=None):

@@ -5,10 +5,14 @@ import numpy as np
 import pandas as pd
 
 
-def prepare_plot_data(df: pd.DataFrame, daily_spending: float) -> pd.DataFrame:
+def prepare_plot_data(df: pd.DataFrame, daily_spending: float, extend: datetime = None) -> pd.DataFrame:
     df['Total'] = df['Amount'].cumsum()
     df = df.select_dtypes('number').drop('Amount', axis=1)
     df = df.reset_index().drop_duplicates(df.index.name, keep='last').set_index(df.index.name)
+
+    if extend is not None:
+        df.loc[extend] = 0
+
     df = df.asfreq('1D', 'pad')
     df['Planned'] = np.nan
     df['Planned'].iloc[0] = 0
