@@ -27,8 +27,16 @@ class NoteSearch:
     def table(self):
         return self.interface.children[-1]
 
+    @property
+    def output(self):
+        return self.interface.children[1]
+
     def render(self):
-        df = self.bd.df_note_search(self.interface.children[0].value)
+        query = self.interface.children[0].value
+        with self.output:
+            # print(f'Searching for {query}')
+            pass
+        df = self.bd.df_note_search(query)
         if df is not None:
             self.table.df = df
         else:

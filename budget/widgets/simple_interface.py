@@ -1,11 +1,13 @@
 from dataclasses import dataclass
-from typing import Dict
 
 import ipywidgets as widgets
+from ipywidgets import Layout as ly
 import pandas as pd
+import pyperclip
 import qgrid
 
 from budget import BudgetData
+from .. import utils
 
 
 @dataclass
@@ -13,24 +15,30 @@ class SimpleInterface:
     bd: BudgetData
 
     def __post_init__(self):
-        self.options = widgets.HBox([
-            widgets.ToggleButton(value=True, description='Unmatched only'),
-            widgets.Button(description='Save SQL'),
-            widgets.Button(description='Reload CSVs')
-        ])
 
-        self.search = widgets.Text(description='Regex:', placeholder='Type a regex here')
+        self.options = widgets.HBox([
+            widgets.Button(description='Render', layout=ly(width='80px')),
+            widgets.ToggleButton(value=True, description='Unmatched', layout=ly(width='100px')),
+            widgets.ToggleButton(value=False, description='Notes', layout=ly(width='80px')),
+            widgets.Button(description='Save SQL', layout=ly(width='80px')),
+            widgets.Button(description='Reload CSVs', layout=ly(width='100px')),
+            widgets.Button(description='Copy ID', layout=ly(width='80px'))
+            ],
+            layout=ly(justify_content='flex-start')
+        )
+
+        self.search = widgets.Text(placeholder='Type a regex here')
 
         cats = self.bd._sel.columns.tolist()
         self.manual_note = widgets.HBox([
-            widgets.Dropdown(options=cats, value=cats[0], description='Category:'),
-            widgets.Button(description='Add Manual Category')
-        ])
+            widgets.Button(description='Manually Categorize'),
+            widgets.Dropdown(options=cats, value=cats[0], layout=ly(width='200px')),
+        ], layout=ly(flex='1 1 auto'))
 
         self.custom_note = widgets.HBox([
-            widgets.Text(description='Custom:', placeholder='Custom note'),
-            widgets.Button(description='Add Custom Note')
-        ])
+            widgets.Button(description='Add Custom Note'),
+            widgets.Text(placeholder='keyword: data', layout=ly(flex='1 1 auto')),
+        ], layout=ly(flex='1 1 auto'))
 
         self.connect_handlers()
         self.output = widgets.Output()
@@ -69,8 +77,7 @@ class SimpleInterface:
                     print(f'Failed')
                 else:
                     print(f'Done')
-                    self.render()
-        self.reload_button.on_click(reload)
+        self.reload_csv_button.on_click(reload)
 
         def manual_note(b):
             with self.output:
@@ -82,7 +89,6 @@ class SimpleInterface:
                     print(f'failed to add note: {n}')
                 else:
                     print(f'Added \'{n}\' to {selection.shape[0]} transactions')
-                    self.render()
         self.manual_add_button.on_click(manual_note)
 
         def custom_note(b):
@@ -97,11 +103,26 @@ class SimpleInterface:
                     print(f'Added \'{n}\' to {selection.shape[0]} transactions')
         self.custom_note_button.on_click(custom_note)
 
-        def simple_handle(change_dict):
+        def copy(b):
             with self.output:
-                self.render()
-        self.unsel_toggle.observe(simple_handle, names='value')
-        self.search.observe(simple_handle, names='value')
+                try:
+                    id = utils.hash(self.sel.iloc[0])
+                    print(f'Copied ID: {id}')
+                    pyperclip.copy(id)
+                except:
+                    print()
+        self.copy_button.on_click(copy)
+
+        def render(b):
+            with self.output:
+                try:
+                    self.render()
+                except:
+                    print('Error rendering DataFrame')
+        self.render_button.on_click(render)
+        self.unsel_toggle.observe(render, 'value')
+        self.note_toggle.observe(render, 'value')
+        self.search.observe(render, 'value')
 
     def render(self):
         if self.unsel_toggle.value:
@@ -117,40 +138,55 @@ class SimpleInterface:
         except:
             print(f'error searching')
         else:
-            self.table.df = self.bd.df[m][::-1]
+            if self.note_toggle.value:
+                self.table.df = self.bd[m][::-1]
+            else:
+                self.table.df = self.bd.df[m][::-1]
 
     @property
-    def sel(self):
+    def sel(self) -> pd.DataFrame:
         return self.table.get_selected_df()
 
     @property
-    def df(self):
+    def df(self) -> pd.DataFrame:
         return self.table.get_changed_df()
 
     @property
-    def cat_selection(self):
-        return self.manual_note.children[0].value
+    def manual_add_button(self) -> widgets.Button:
+        return self.manual_note.children[0]
 
     @property
-    def manual_add_button(self):
-        return self.manual_note.children[1]
+    def cat_selection(self) -> widgets.Dropdown:
+        return self.manual_note.children[1].value
 
     @property
-    def custom_note_button(self):
-        return  self.custom_note.children[1]
+    def custom_note_button(self) -> widgets.Button:
+        return self.custom_note.children[0]
 
     @property
-    def cust_note_text(self):
-        return self.custom_note.children[0].value
+    def cust_note_text(self) -> widgets.Text:
+        return self.custom_note.children[1].value
 
     @property
-    def unsel_toggle(self):
+    def render_button(self) -> widgets.Button:
         return self.options.children[0]
 
     @property
-    def save_button(self):
+    def unsel_toggle(self) -> widgets.ToggleButton:
         return self.options.children[1]
 
     @property
-    def reload_button(self):
+    def note_toggle(self) -> widgets.ToggleButton:
         return self.options.children[2]
+
+    @property
+    def reload_csv_button(self) -> widgets.Button:
+        return self.options.children[-2]
+
+    @property
+    def save_button(self) -> widgets.Button:
+        return self.options.children[-3]
+
+    @property
+    def copy_button(self) -> widgets.Button:
+        return self.options.children[-1]

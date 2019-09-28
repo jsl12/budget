@@ -1,4 +1,5 @@
 import re
+import logging
 from dataclasses import dataclass
 from typing import List
 
@@ -7,6 +8,7 @@ import pandas as pd
 from .note import Note, Link, Category
 from .split import SplitNote
 
+NOTE_PARSE_REGEX = re.compile('id=\'([\d\w]+)\', note=\'([\d\w :,]+)\'')
 
 @dataclass
 class NoteManager:
@@ -14,6 +16,7 @@ class NoteManager:
 
     def __post_init__(self):
         self.notes = pd.Series(name='note', dtype='object')
+        self.logger = logging.getLogger(__name__)
 
     def validate_notes(self, ids: pd.Series):
         return self.notes.map(lambda n: n.id).isin(ids).all()
@@ -34,21 +37,16 @@ class NoteManager:
         # Read the whole table of notes
         notes = pd.read_sql_query(sql=f'select * from {self.SQL_NOTE_TABLE}', con=con)
 
+        self.logger.debug(f'{notes.shape[0]} notes loaded from \'{self.SQL_NOTE_TABLE}\'')
+
         # Set up the index
         notes.set_index(notes.columns[0], inplace=True)
 
-        rgx = re.compile('id=\'([\d\w]+)\', note=\'([\d\w :,]+)\'')
-        def eval_note(input):
-            try:
-                return eval(input)
-            except NameError:
-                m = rgx.search(input)
-                return self.parse_note(m.group(1), m.group(2))
-
         try:
             # Select only the first column (should only be one)
-            notes = notes.iloc[:, 0].map(eval_note)
+            notes = notes.iloc[:, 0].map(NoteManager.eval_note)
         except NameError:
+            self.logger.debug('No notes loaded')
             pass
         # Assign to attribute
         self.notes = notes
@@ -63,28 +61,17 @@ class NoteManager:
         # doesn't use isinstance() to prevent subtypes from being selected
         return [n for n in self.notes.values if type(n) is typ]
 
-    @property
-    def manual_notes(self):
-        return self.get_notes_by_type(Category)
-
-    @property
-    def split_notes(self):
-        return self.get_notes_by_type(SplitNote)
-
-    @property
-    def link_notes(self):
-        return self.get_notes_by_type(Link)
-
     def manual_ids(self, cat: str):
-        return [n.id for n in self.manual_notes if n.category == cat]
+        return [n.id for n in self.get_notes_by_type(Category) if n.category == cat]
 
     def split_ids(self, cat: str) -> List[str]:
-        return [n.id for n in self.split_notes if cat in n.parts]
+        return [n.id for n in self.get_notes_by_type(SplitNote) if cat in n.parts]
 
     def linked_ids(self, df: pd.DataFrame) -> List[str]:
-        return [n.id for n in self.link_notes if n.target in df['id'].values]
+        return [n.id for n in self.get_notes_by_type(Link) if n.target in df['id'].values]
 
     def apply_notes(self, df: pd.DataFrame, cat: str) -> List[str]:
+        # relevant notes are ones who are attached to transaction ids in the DataFrame
         relevant_notes = self.get_notes_by_id(df['id'].values)
         df = df.reset_index().set_index('id')
 
@@ -113,6 +100,14 @@ class NoteManager:
 
         df = df.reset_index().set_index(df.columns[0])
         return df
+
+    @staticmethod
+    def eval_note(input):
+        try:
+            return eval(input)
+        except (NameError, SyntaxError):
+            m = NOTE_PARSE_REGEX.search(input)
+            return NoteManager.parse_note(m.group(1), m.group(2))
 
     @staticmethod
     def parse_note(id: str, input: str, add_note_types=None):

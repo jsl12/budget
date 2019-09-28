@@ -31,13 +31,13 @@ class Loader:
                 assert all([isinstance(v, int) for v in value['columns'].values()])
 
     def load_all_accounts(self):
-        def load(name, cfg):
+        def load(name: str, cfg: Dict):
             self.debug(f' {name} '.center(75, '-'))
-            return self.load_account(cfg, name)
+            return self.load_account(name, cfg)
         df = pd.concat([load(*items) for items in self.cfg.items()]).sort_index()
         return df
 
-    def load_account(self, cfg: Dict, name: str):
+    def load_account(self, name: str, cfg: Dict):
         files = [f for f in Path(cfg.pop('folder')).glob('*.csv')]
 
         while True:

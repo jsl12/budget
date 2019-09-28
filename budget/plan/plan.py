@@ -53,7 +53,7 @@ class BudgetPlan:
         except KeyError:
             raise KeyError(f'{name} has nothing planned for it')
 
-    def category_plot(self, cat: str, start_date: str = None, end_date: str = None, **kwargs) -> plt.Figure:
+    def category_plot(self, cat: str, start_date: str = None, end_date: str = None, extend=False, **kwargs) -> plt.Figure:
         df = self.data[cat]
 
         this_year = datetime.today().strftime('%Y')
@@ -62,7 +62,11 @@ class BudgetPlan:
         df = df[start_date:end_date]
 
         daily = self.get_expense(cat).daily
-        df = utils.prepare_plot_data(df, daily, extend=datetime.today())
+        if extend:
+            extend = datetime.today()
+        else:
+            extend = None
+        df = utils.prepare_plot_data(df, daily, extend=extend)
 
         fig, ax = plt.subplots(**kwargs)
         with warnings.catch_warnings():

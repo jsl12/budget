@@ -22,7 +22,13 @@ class SplitNote(Note):
 
     def parse_cat(self, input):
         try:
-            return input.split(' ')[1]
+            # correctly processes categories with spaces in the name
+            tokens = input.split(' ')
+            if len(tokens) > 1:
+                cat  = ' '.join(tokens[1:])
+                return cat
+            else:
+                return
         except IndexError as e:
             return
 

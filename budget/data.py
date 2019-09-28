@@ -10,10 +10,10 @@ import pandas as pd
 import yaml
 
 from . import processing
+from . import utils
 from .load import Loader
 from .notes import NoteManager
 from .notes.note import Category
-from .utils import hash, report
 
 
 class BudgetData:
@@ -75,6 +75,8 @@ class BudgetData:
 
     def __init__(self, yaml_path: str):
         self.yaml_path = Path(yaml_path)
+        if not self.yaml_path.is_absolute():
+            self.yaml_path = self.yaml_path.resolve()
         self.note_manager = NoteManager()
         self.logger = logging.getLogger(__name__)
 
@@ -127,12 +129,15 @@ class BudgetData:
 
     @property
     def db_path(self):
-        return Path(self.cfg['Loading']['db'])
+        p = Path(self.cfg['Loading']['db'])
+        if not p.is_absolute():
+            p = self.yaml_path.parents[0] / p
+        return p
 
     def hash_transactions(self, df: pd.DataFrame = None) -> pd.DataFrame:
         if df is None:
             df = self._df
-        df['id'] = df.apply(hash, axis=1)
+        df['id'] = df.apply(utils.hash, axis=1)
         return df
 
     def load_csv(self):
@@ -157,9 +162,18 @@ class BudgetData:
     def sql_context(self, path=None):
         if path is None:
             path = self.db_path
-        return sqlite3.connect(path)
+
+        try:
+            connection = sqlite3.connect(path)
+        except:
+            raise
+        else:
+            self.debug(f'Opened SQL connection to\n{path.resolve()}')
+            return connection
 
     def save_sql(self, path=None):
+        if not isinstance(path, Path):
+            path = Path(path)
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             with self.sql_context(path) as con:
@@ -168,6 +182,8 @@ class BudgetData:
                 self.note_manager.save_notes(con)
 
     def load_sql(self, path=None, notes=True):
+        if isinstance(path, str):
+            path = Path(path)
         with self.sql_context(path) as con:
             kwargs = {
                 'con': con,
@@ -180,6 +196,7 @@ class BudgetData:
 
             if notes:
                 self.note_manager.load_notes(con)
+        self.debug(f'left sql connection context')
 
     def update_sql(self):
         '''
@@ -232,7 +249,7 @@ class BudgetData:
         except KeyError as e:
             raise KeyError(f'invalid category: {e.args[0]}')
 
-        return report(df=res, freq=freq, avg=avg)
+        return utils.report(df=res, freq=freq, avg=avg)
 
     def render(self, df: pd.DataFrame, category: str = None) -> pd.DataFrame:
         """
@@ -250,6 +267,7 @@ class BudgetData:
             if isinstance(df, pd.Series):
                 df = pd.DataFrame(df).transpose()
 
+            self.debug(f'Starting render of transaction DataFrame')
             # Append the manually categorized
             df = df.append(self._df[self.id.isin(self.note_manager.manual_ids(category))])
 
@@ -259,11 +277,15 @@ class BudgetData:
             # Append the linked
             df = df.append(self._df[self.id.isin(self.note_manager.linked_ids(df))])
 
+            # drops duplicates in case multiple types of notes are linked to the same transaction
+            df = df.drop_duplicates(keep='first')
+
             # Apply all the notes
             df = self.note_manager.apply_notes(df, category)
 
             # Clean up the result
             df = df.drop('id', axis=1).sort_index()
+            self.debug(f'Done')
             return df
 
     def add_note(self, df: pd.DataFrame, note: str) -> None:

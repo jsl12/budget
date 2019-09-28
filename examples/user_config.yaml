@@ -15,6 +15,10 @@ Loading:              # required key
         desc: 4
         amount: 1
 
+Plan:
+  Rideshare: '30/m'
+  Food and Drink: '100/w'
+
 Categories:           # required key
   Salary:
     - [direct, dep]   # lists of strings get logically ANDed together. This means that both 'direct' AND 'dep' must be matched
