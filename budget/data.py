@@ -4,7 +4,7 @@ import sqlite3
 import warnings
 from functools import reduce
 from pathlib import Path
-from typing import List
+from typing import List, Dict
 
 import pandas as pd
 import yaml
@@ -87,16 +87,16 @@ class BudgetData:
         self.logger.info(*args, **kwargs)
 
     @property
-    def cfg(self):
+    def cfg(self) -> Dict:
         with self.yaml_path.open('r') as file:
             return yaml.load(file, Loader=yaml.SafeLoader)
 
     @property
-    def categories(self):
+    def categories(self) -> Dict:
         return self.cfg['Categories']
 
     @property
-    def df(self):
+    def df(self) -> pd.DataFrame:
         if not hasattr(self, '_df'):
             self.load_sql()
         if 'id' in self._df.columns:
@@ -105,30 +105,30 @@ class BudgetData:
             return self._df.fillna('')
 
     @property
-    def id(self):
+    def id(self) -> pd.Series:
         return self._df['id']
 
     @property
-    def amounts(self):
+    def amounts(self) -> pd.Series:
         # there should only be 1 column with numbers, the amounts column. This abstraction removes the dependence on the column name
         return self.df.select_dtypes('number').iloc[:, 0]
 
     @property
-    def unselected(self):
+    def unselected(self) -> pd.DataFrame:
         return ~self._sel.any(axis=1) & ~self._df['id'].isin(
             [n.id for n in self.note_manager.get_notes_by_type(Category)]
         )
 
     @property
-    def notes(self):
+    def notes(self) -> pd.Series:
         return self.note_manager.notes.map(lambda n: n.note)
 
     @property
-    def _notes(self):
+    def _notes(self) -> pd.Series:
         return self.note_manager.notes
 
     @property
-    def db_path(self):
+    def db_path(self) -> Path:
         p = Path(self.cfg['Loading']['db'])
         if not p.is_absolute():
             p = self.yaml_path.parents[0] / p
@@ -172,7 +172,7 @@ class BudgetData:
             return connection
 
     def save_sql(self, path=None):
-        if not isinstance(path, Path):
+        if isinstance(path, str):
             path = Path(path)
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
@@ -280,6 +280,10 @@ class BudgetData:
             # drops duplicates in case multiple types of notes are linked to the same transaction
             df = df.drop_duplicates(keep='first')
 
+            # Remove gifts from categories
+            if category is not None:
+                df = df[~df['id'].isin(self.notes[self.notes.str.contains('gift')].index.values)]
+
             # Apply all the notes
             df = self.note_manager.apply_notes(df, category)
 
@@ -317,6 +321,6 @@ class BudgetData:
             df['Note'] = [n.note for n in notes]
         except TypeError:
             # Happens when no matching notes are found
-            return None
+            return pd.DataFrame(columns=self.df.columns.tolist() + ['Note'])
         else:
-            return df.drop('id', axis=1)
+            return df.drop('id', axis=1).sort_index(ascending=False)

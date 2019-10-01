@@ -1,10 +1,10 @@
 from dataclasses import dataclass
 
 import ipywidgets as widgets
-from ipywidgets import Layout as ly
 import pandas as pd
 import pyperclip
 import qgrid
+from ipywidgets import Layout as ly
 
 from budget import BudgetData
 from .. import utils

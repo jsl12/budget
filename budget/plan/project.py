@@ -55,7 +55,8 @@ class SimplePlan:
         if isinstance(end, int):
             end = start + timedelta(days=end)
 
-        repeating = [e for e in self.exp if e.date is None or e.recur is not None]
+        repeating = [e for e in self.exp
+            if e.date is None or e.recur is not None]
         within_dates = self.exp[~self.exp.index.isna()][start:end].tolist()
         all_expenses = []
         for e in (repeating + within_dates):
@@ -77,5 +78,6 @@ class SimplePlan:
 
     def add_cfg(self, input: Dict):
         for cat, s in input.items():
-            value, period = (s.split('/'))
+            data = s.split('/')
+            value, period = data[0], data[1]
             self.add_expense(Expense(cat, -float(value), date=None, recur=f'1{period}'))
