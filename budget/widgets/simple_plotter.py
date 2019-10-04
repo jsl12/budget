@@ -26,16 +26,18 @@ class SimplePlotter:
 
             with self.output:
                 clear_output()
-                display(self.bp.category_plot(
+                fig, df = self.bp.category_plot(
                     cat=self.plotter.children[0].value,
                     start_date=self.plotter.children[1].value,
                     end_date=self.plotter.children[2].value,
                     figsize=(9.6, 5.4)
-                ))
+                )
+                display(fig)
+                self.df = df
 
         for c in self.plotter.children:
             c.observe(plot, names='value')
 
-
+    @property
     def interface(self):
         return widgets.VBox([self.plotter, self.output])

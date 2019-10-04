@@ -1,6 +1,6 @@
 import logging
 import warnings
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -75,7 +75,7 @@ class BudgetPlan:
         ax.grid(True)
         ax.legend(df.columns)
         ax.set_title(f'{cat} Expenses, ${daily}/day')
-        return fig
+        return fig, df
 
     def current(self, cat: str, start_date: str = None) -> float:
         df = self.data[cat]
@@ -87,12 +87,15 @@ class BudgetPlan:
         planned = elapsed_days * self.get_expense(cat).daily
         return round(total - planned, 2)
 
-    def days(self, cat: str, start_date: datetime = None) -> float:
+    def days(self, cat: str, start_date: datetime = None, add: float = 0) -> float:
         """
         Find out how many days ahead/behind you are according to the burn rate for that Expense
 
         :return:
         """
         daily_burn = self.get_expense(cat).daily
-        current = self.current(cat, start_date)
+        current = self.current(cat, start_date) + add
         return round(-(current / daily_burn), 1)
+
+    def zero_day(self, cat: str, start_date: datetime = None, add: float = 0) -> datetime:
+        return datetime.now() - timedelta(days=self.days(cat, start_date, add))
