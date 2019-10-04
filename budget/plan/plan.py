@@ -1,10 +1,12 @@
 import logging
 import warnings
+from math import ceil
 from datetime import datetime, timedelta
 from pathlib import Path
 
 import matplotlib.pyplot as plt
 import pandas as pd
+import numpy as np
 import yaml
 
 from . import utils
@@ -39,12 +41,8 @@ class BudgetPlan:
     def monthly(self):
         return round(self.daily * 31, 2)
 
-    def category_report(self, name: str, date: str = None) -> pd.DataFrame:
-        df = self.data[name]
-
-        if date is not None:
-            df = df[date:]
-
+    def category_report(self, name: str, start_date: datetime = None) -> pd.DataFrame:
+        df = self.data[name][start_date or datetime.today().strftime('%Y'):]
         return utils.compare(df, self.get_expense(name).daily)
 
     def get_expense(self, name: str) -> Expense:
@@ -67,14 +65,7 @@ class BudgetPlan:
         else:
             extend = None
         df = utils.prepare_plot_data(df, daily, extend=extend)
-
-        fig, ax = plt.subplots(**kwargs)
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            ax.plot(df)
-        ax.grid(True)
-        ax.legend(df.columns)
-        ax.set_title(f'{cat} Expenses, ${daily}/day')
+        fig = self.linear_plot(df, title=f'{cat} Expenses, ${daily}/day', **kwargs)
         return fig, df
 
     def current(self, cat: str, start_date: str = None) -> float:
@@ -99,3 +90,77 @@ class BudgetPlan:
 
     def zero_day(self, cat: str, start_date: datetime = None, add: float = 0) -> datetime:
         return datetime.now() - timedelta(days=self.days(cat, start_date, add))
+
+    def since_last_zero(self, cat:str, start_date: datetime = None) -> pd.DataFrame:
+        df = self.data[cat][start_date or datetime.today().strftime('%Y'):]
+        daily = self.get_expense(cat).daily
+        df = utils.prepare_plot_data(
+            df=df,
+            daily_spending=daily
+        )
+
+        i = df[df['Difference'] >= 0].index[-1]
+        return self.data[cat][i:]
+
+    def last_zero_plot(self, cat:str, start_date: datetime = None, extend=False, **kwargs) -> plt.Figure:
+        df = self.since_last_zero(cat, start_date)
+
+        if extend:
+            extend = self.zero_day(cat, start_date)
+        else:
+            extend = None
+
+        df = utils.prepare_plot_data(
+            df=df,
+            daily_spending=self.get_expense(cat).daily,
+            extend=extend
+        )
+        return self.linear_plot(df, title=f'{cat} Spending, ${self.get_expense(cat).daily:.2f}/day', **kwargs)
+
+    @staticmethod
+    def linear_plot(df: pd.DataFrame, title:str = None, **kwargs) -> plt.Figure:
+        fig, ax = plt.subplots(**kwargs)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            ax.plot(df)
+
+        ax.grid(True)
+        ax.legend(df.columns)
+
+        if title is not None:
+            ax.set_title(title)
+
+        return fig
+
+    def cat_stat_plot(self, df: pd.DataFrame, freq:str = '1M', title:str = None, **kwargs) -> plt.Figure:
+        grouper = pd.Grouper(freq=freq)
+        res = df.groupby(grouper).sum()
+        res['Count'] = df.groupby(grouper).count().iloc[:, 0]
+        res['Mean'] = df.groupby(grouper).mean()
+        res['Median'] = df.groupby(grouper).median()
+        res = res.applymap(lambda v: abs(round(v, 2)))
+
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore')
+
+            x = np.arange(res.shape[0])
+            w = .5
+
+            fig, ax1 = plt.subplots(**kwargs)
+            ax2 = ax1.twinx()
+            offset = (w / 8) - (w / 2)
+            ax1.bar(x + offset, res.iloc[:, 0].values, color='r', width=w/4)
+            ax2.bar(x + 1*(w / 4) + offset, res['Count'].values, width=w/4)
+            ax2.bar(x + 2*(w / 4) + offset, res['Mean'].values, width=w/4)
+            ax2.bar(x + 3*(w / 4) + offset, res['Median'].values, width=w/4)
+            ax1.legend(['Amount'], loc='upper left')
+            ax2.legend(['Count', 'Mean', 'Median'], loc='upper right')
+
+            ax1.set_xticks(x)
+            ax1.set_xticklabels(res.index.to_series().map(lambda v: v.strftime('%B')).values)
+            if title is not None:
+                ax1.set_title(title)
+
+            ax1.set_ylim(0, ceil(res['Amount'].max() / 500) * 500)
+            ax2.set_ylim(0, ceil(res.iloc[:,1:].max().max() / 100) * 100)
+            return fig, res
