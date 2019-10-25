@@ -17,13 +17,18 @@ class TestSimplePlan(unittest.TestCase):
             ('Credit Card 1', -500.00),
             ('Credit Card 2', -1000.00),
             ('Credit Card 3', -2000.00),
-            ('Paycheck', 2000.00, None, '2W'),
-            ('Food and Drink', -250, None, '1W'),
-            ('Rent', -1000, None, 'MS'),
-            ('Clothing', -1000, None, '1y'),
-            ('Car Note', -300, datetime.today() + timedelta(days=2), '1m')
         ]
         self.plan = plan.SimplePlan([plan.Expense(*args) for args in initial])
+
+        exps = {
+            'Paycheck': '2000/2w',
+            'Rent': '-1000/ms',
+            'Food and Drink': '-1000/1m/3d',
+            'Clothes': '-1000/1y/1m',
+            'Car Loan': '-300/ms+23'
+        }
+        self.plan.add_cfg(exps)
+
 
     def test_add(self):
         self.plan.add_expense(plan.Expense('Burn rate', -250, None, recur='1W'))

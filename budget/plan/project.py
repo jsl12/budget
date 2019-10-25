@@ -78,6 +78,4 @@ class SimplePlan:
 
     def add_cfg(self, input: Dict):
         for cat, s in input.items():
-            data = s.split('/')
-            value, period = data[0], data[1]
-            self.add_expense(Expense(cat, -float(value), date=None, recur=f'1{period}'))
+            self.add_expense(Expense.from_plan_str(cat, s))
