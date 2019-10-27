@@ -1,12 +1,13 @@
 import logging
 import warnings
-from math import ceil
 from datetime import datetime, timedelta
+from math import ceil
 from pathlib import Path
 
+import matplotlib.dates as dates
 import matplotlib.pyplot as plt
-import pandas as pd
 import numpy as np
+import pandas as pd
 import yaml
 
 from . import utils
@@ -164,3 +165,23 @@ class BudgetPlan:
             ax1.set_ylim(0, ceil(res['Amount'].max() / 500) * 500)
             ax2.set_ylim(0, ceil(res.iloc[:,1:].max().max() / 100) * 100)
             return fig, res
+
+    def cat_bar_plot(self, data: pd.Series, **kwargs) -> plt.Figure:
+        data = data.abs()
+        fig, ax = plt.subplots(**kwargs)
+
+        ax.grid(True)
+        ax.xaxis.set_major_formatter(dates.DateFormatter('%B'))
+
+        total_w = 6
+        if isinstance(data, pd.Series):
+            ax.set_ylim(0, ceil(data.max() / 100) * 100)
+            ax.bar(data.index, data.values, width=total_w)
+        elif isinstance(data, pd.DataFrame):
+            ax.set_ylim(0, ceil(data.max().max() / 100) * 100)
+            for i, c in enumerate(data):
+                w = total_w/data.shape[1]
+                # offset = -(total_w / (data.shape[1] * 2)) + (i * w)
+                offset = 0
+                ax.bar(data.index + timedelta(days=int(offset)), data[c].values, width=w)
+        return fig

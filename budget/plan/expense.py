@@ -1,6 +1,6 @@
 import re
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import pandas as pd
 
@@ -14,7 +14,7 @@ class Expense:
     date: datetime = datetime.today()
     recur: str = None
     compile: str = None
-    offset: int = None
+    offset: int = 0
 
     def __post_init__(self):
         if isinstance(self.date, str):
@@ -36,27 +36,31 @@ class Expense:
         :param end:
         :return:
         """
+        start = start or self.date
+
         if self.compile is not None:
-            recur = '1D'
+            dates = date_range(start=start, end=end, freq='1D')
+            res = pd.Series(
+                data=[self.daily for d in dates],
+                index=dates
+            )
+
+            res = res.resample(
+                rule=self.compile,
+                label='right'
+            ).sum()
+            res = pd.Series(
+                data=[Expense(self.name, value, date) for date, value in res.iteritems()],
+                index=res.index
+            )
         else:
-            recur = self.recur
-        dates = date_range(
-            start=start or self.date,
-            end=end,
-            freq=recur
-        )
+            dates = date_range(start=start, end=end, freq=self.recur)
+            res = pd.Series(
+                data=[Expense(self.name, self.amount, d.to_pydatetime()) for d in dates],
+                index=dates
+            )
 
-        if self.compile is not None:
-            data = [self.daily for d in dates]
-        else:
-            data = [Expense(self.name, self.amount, d.to_pydatetime()) for d in dates]
-        res = pd.Series(data=data, index=dates)
-
-        if self.compile is not None:
-            res = res.groupby(pd.Grouper(freq=self.compile)).sum()
-            data = [Expense(self.name, value, date) for date, value in res.iteritems()]
-            res = pd.Series(data=data, index=res.index)
-
+            res.index += timedelta(days=self.offset)
         return res
 
     @property
@@ -68,8 +72,11 @@ class Expense:
                 period = 31
             elif 'Y' in self.recur:
                 period = 365
-            m = re.match('(\d+)(\w+)', self.recur)
-            num = int(m.group(1))
+            try:
+                m = re.match('(\d+)(\w+)', self.recur)
+                num = int(m.group(1))
+            except AttributeError:
+                num = 1
             return round(self.amount / (num * period), 2)
 
     @staticmethod
@@ -77,9 +84,9 @@ class Expense:
         if '+' in input:
             d = input.split('+')
             input = d[0]
-            day_offset = d[1]
+            day_offset = int(d[1])
         else:
-            day_offset = None
+            day_offset = 0
 
         input = input.split('/')
         value = input[0]

@@ -23,7 +23,7 @@ class TestSimplePlan(unittest.TestCase):
         exps = {
             'Paycheck': '2000/2w',
             'Rent': '-1000/ms',
-            'Food and Drink': '-1000/1m/3d',
+            'Food and Drink': '-1000/1m/w-wed',
             'Clothes': '-1000/1y/1m',
             'Car Loan': '-300/ms+23'
         }
@@ -37,7 +37,7 @@ class TestSimplePlan(unittest.TestCase):
     def test_project(self):
         df = self.plan.project(start=datetime.today(), end=100)
         df = self.plan.project(end=750)
-        monthly = df[df['Name'] == 'Car Note']
+        monthly = df[df['Name'] == 'Car Loan']
         self.assertEqual(monthly.index[0].month+1, monthly.index[1].month)
         return
 

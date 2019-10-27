@@ -1,135 +1,136 @@
 from dataclasses import dataclass
 
 import ipywidgets as widgets
+import numpy as np
 import pandas as pd
-import pyperclip
 import qgrid
 from ipywidgets import Layout as ly
 
 from budget import BudgetData
-from .. import utils
+from . import bars, utils
+from .opts import qgrid_opts
+from ..notes import note
+
+button_layout = {
+    'width':  '100px'
+}
 
 
 @dataclass
 class SimpleInterface:
     bd: BudgetData
+    col_order = ['Account', 'Amount', 'Description', 'id']
 
     def __post_init__(self):
+        self.bd.RENDER_DROP_ID_COL = False
 
-        self.options = widgets.HBox([
-            widgets.Button(description='Render', layout=ly(width='80px')),
-            widgets.ToggleButton(value=True, description='Unmatched', layout=ly(width='100px')),
-            widgets.ToggleButton(value=False, description='Notes', layout=ly(width='80px')),
-            widgets.Button(description='Save SQL', layout=ly(width='80px')),
-            widgets.Button(description='Reload CSVs', layout=ly(width='100px')),
-            widgets.Button(description='Copy ID', layout=ly(width='80px'))
+        self.buttons = widgets.HBox([
+            widgets.ToggleButton(value=True, description='Unmatched', layout=button_layout),
+            widgets.ToggleButton(value=False, description='Apply Notes', layout=button_layout),
+            widgets.Button(description='Render', layout=button_layout),
+            widgets.Button(description='Save SQL', layout=button_layout),
+            widgets.Button(description='Reload CSVs', layout=button_layout),
             ],
-            layout=ly(justify_content='flex-start')
+            layout=ly(
+                display='flex',
+                flex_flow='row wrap',
+                # border='solid 1px red'
+            )
         )
 
-        self.search = widgets.Text(placeholder='Type a regex here')
+        self.render_button.on_click(
+            lambda *args: self.print_output(self.render)
+        )
+        self.save_button.on_click(
+            lambda *args: self.print_output(utils.save, self.bd)
+        )
+        self.reload_csv_button.on_click(
+            lambda *args: self.print_output(utils.reload, self.bd)
+        )
 
-        cats = self.bd._sel.columns.tolist()
-        self.manual_note = widgets.HBox([
-            widgets.Button(description='Manually Categorize'),
-            widgets.Dropdown(options=cats, value=cats[0], layout=ly(width='200px')),
-        ], layout=ly(flex='1 1 auto'))
+        self.search = bars.RegexSearchBar()
+        self.search.observe(
+            lambda *args: self.print_output(self.render),
+            'value'
+        )
 
-        self.custom_note = widgets.HBox([
-            widgets.Button(description='Add Custom Note'),
-            widgets.Text(placeholder='keyword: data', layout=ly(flex='1 1 auto')),
-        ], layout=ly(flex='1 1 auto'))
+        self.manual_note = bars.ManualCategoryBar(self.bd)
+        self.manual_note.button.on_click(
+            lambda *args: self.print_output(self.manual_note.add_note, self.sel)
+        )
 
-        self.connect_handlers()
+        self.custom_note = bars.CustomNoteBar(self.bd)
+        self.custom_note.button.on_click(
+            lambda *args: self.print_output(self.custom_note.add_note, self.sel)
+        )
+
         self.output = widgets.Output()
-        self.table = qgrid.show_grid(self.bd.df[self.bd.unselected][::-1])
+        self.table = qgrid.show_grid(self.bd._df[self.bd.unselected][::-1][self.col_order], **qgrid_opts)
+        self.table.on('selection_changed', self.show_relevant_notes)
+
+        self.id_bar = bars.IDBar()
+        self.id_bar.button.on_click(
+            lambda *args: self.print_output(utils.copy_id, self.sel)
+        )
+        self.id_bar.children[-1].on_click(
+            lambda *args: self.print_output(self.drop_selected_note, self.note_table.get_selected_df())
+        )
+
+        self.note_table =   qgrid.show_grid(self.bd.df_note_search('')[self.col_order[:-1] + ['Note']], **qgrid_opts)
+
+        self.interface = widgets.VBox(
+            children=[
+                self.controls,
+                self.output,
+                self.table,
+                self.id_bar,
+                self.note_table
+            ],
+            layout=ly(display='flex')
+        )
+
+
+    def print_output(self, func, *args):
+        """
+        Used to wrap callback functions so that they print to the Output object
+        :param func:
+        :param args:
+        :return:
+        """
+        with self.output:
+            func(*args)
 
     @property
-    def interface(self):
-        return widgets.VBox([
-            self.options,
-            self.search,
-            self.manual_note,
-            self.custom_note,
-            self.output,
-            self.table
-        ])
+    def bars(self):
+        return widgets.VBox(
+            children=[
+                self.search,
+                self.manual_note,
+                self.custom_note,
+            ],
+            layout=ly(
+                display='flex',
+                flex='0 0 470px',
+                align_items='stretch',
+                padding='10px'
+            )
+        )
 
-    def connect_handlers(self):
-        def save(b):
-            with self.output:
-                try:
-                    self.bd.save_sql()
-                except:
-                    print(f'Error saving to {self.bd.db_path}')
-                else:
-                    print(f'Saved to {self.bd.db_path.name}')
-        self.save_button.on_click(save)
-
-        def reload(b):
-            with self.output:
-                try:
-                    print(f'Reloading CSV files...')
-                    self.bd.load_csv()
-                    print(f'Processing categories')
-                    self.bd.process_categories()
-                except:
-                    print(f'Failed')
-                else:
-                    print(f'Done')
-        self.reload_csv_button.on_click(reload)
-
-        def manual_note(b):
-            with self.output:
-                try:
-                    n = f'cat: {self.cat_selection}'
-                    selection = self.sel
-                    self.bd.add_note(selection, n)
-                except:
-                    print(f'failed to add note: {n}')
-                else:
-                    print(f'Added \'{n}\' to {selection.shape[0]} transactions')
-        self.manual_add_button.on_click(manual_note)
-
-        def custom_note(b):
-            with self.output:
-                try:
-                    n = self.cust_note_text
-                    selection = self.sel
-                    self.bd.add_note(selection, n)
-                except:
-                    print(f'failed to add note: {n}')
-                else:
-                    print(f'Added \'{n}\' to {selection.shape[0]} transactions')
-        self.custom_note_button.on_click(custom_note)
-
-        def copy(b):
-            with self.output:
-                try:
-                    id = utils.hash(self.sel.iloc[0])
-                    print(f'Copied ID: {id}')
-                    pyperclip.copy(id)
-                except:
-                    print()
-        self.copy_button.on_click(copy)
-
-        def render(b):
-            with self.output:
-                try:
-                    self.render()
-                except:
-                    print('Error rendering DataFrame')
-        self.render_button.on_click(render)
-        self.unsel_toggle.observe(render, 'value')
-        self.note_toggle.observe(render, 'value')
-        self.search.observe(render, 'value')
+    @property
+    def controls(self):
+        return widgets.HBox(
+            children=[
+                self.bars,
+                self.buttons
+            ]
+        )
 
     def render(self):
         if self.unsel_toggle.value:
             m = self.bd.unselected
         else:
             m = pd.Series(
-                data=[True] * self.bd.df.shape[0],
+                data=np.ones(self.bd.df.shape[0], dtype=bool),
                 index=self.bd.df.index
             )
 
@@ -139,9 +140,50 @@ class SimpleInterface:
             print(f'error searching')
         else:
             if self.note_toggle.value:
-                self.table.df = self.bd[m][::-1]
+                df = self.bd[m]
             else:
-                self.table.df = self.bd.df[m][::-1]
+                df = self.bd._df[m]
+            self.table.df = df[::-1][self.col_order]
+
+    def show_relevant_notes(self, *args):
+        if self.sel.shape[0] == 1:
+            target_id = self.sel['id'].values.tolist()
+            self.id_bar.value = target_id[0]
+            notes = self.bd.note_manager.get_notes_by_id(target_id)
+            linked = self.bd.note_manager.get_notes_by_id(self.bd.note_manager.linked_ids(self.sel))
+            notes += linked
+            df = pd.DataFrame(
+                data={
+                    'Amount': [self.bd.find_by_id(n.id)['Amount'] for n in notes],
+                    'Description': [self.bd.find_by_id(n.id)['Description'] for n in notes],
+                    'Note': [n.note for n in notes],
+                    'Linked': [
+                        self.bd.find_by_id(n.target)['Description']
+                        if isinstance(n, note.Link) else
+                        ''
+                        for n in notes
+                    ],
+                    'id': [n.id for n in notes]
+                },
+                index=pd.DatetimeIndex(
+                    data=[self.bd.find_by_id(n.id)['Date'] for n in notes],
+                    name='Date'
+                )
+            ).sort_index()
+
+            # for targets that are targeted by linked notes, it's useful to see the original transaction amount
+            if len(linked) > 0:
+                original = self.bd.df_from_ids(target_id)
+                df = pd.concat([original[[c for c in df.columns if c in original]], df], sort=False)
+
+            self.note_table.df = df
+        else:
+            self.id_bar.value = ''
+
+    def drop_selected_note(self, df: pd.DataFrame):
+        for date, row in df.iterrows():
+            self.bd.note_manager.drop(row['id'], row['Note'])
+        self.show_relevant_notes()
 
     @property
     def sel(self) -> pd.DataFrame:
@@ -152,41 +194,21 @@ class SimpleInterface:
         return self.table.get_changed_df()
 
     @property
-    def manual_add_button(self) -> widgets.Button:
-        return self.manual_note.children[0]
-
-    @property
-    def cat_selection(self) -> widgets.Dropdown:
-        return self.manual_note.children[1].value
-
-    @property
-    def custom_note_button(self) -> widgets.Button:
-        return self.custom_note.children[0]
-
-    @property
-    def cust_note_text(self) -> widgets.Text:
-        return self.custom_note.children[1].value
-
-    @property
-    def render_button(self) -> widgets.Button:
-        return self.options.children[0]
-
-    @property
     def unsel_toggle(self) -> widgets.ToggleButton:
-        return self.options.children[1]
+        return self.buttons.children[0]
 
     @property
     def note_toggle(self) -> widgets.ToggleButton:
-        return self.options.children[2]
+        return self.buttons.children[1]
 
     @property
-    def reload_csv_button(self) -> widgets.Button:
-        return self.options.children[-2]
+    def render_button(self) -> widgets.Button:
+        return self.buttons.children[2]
 
     @property
     def save_button(self) -> widgets.Button:
-        return self.options.children[-3]
+        return self.buttons.children[-2]
 
     @property
-    def copy_button(self) -> widgets.Button:
-        return self.options.children[-1]
+    def reload_csv_button(self) -> widgets.Button:
+        return self.buttons.children[-1]

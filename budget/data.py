@@ -80,6 +80,9 @@ class BudgetData:
         self.note_manager = NoteManager()
         self.logger = logging.getLogger(__name__)
 
+        self.RENDER_DROP_ID_COL = True
+        self.RENDER_SORT = True
+
     def debug(self, *args, **kwargs):
         self.logger.debug(*args, **kwargs)
 
@@ -251,7 +254,7 @@ class BudgetData:
 
         return utils.report(df=res, freq=freq, avg=avg)
 
-    def render(self, df: pd.DataFrame, category: str = None) -> pd.DataFrame:
+    def render(self, df: pd.DataFrame, category: str = None, drop_id=None, sort=None) -> pd.DataFrame:
         """
         Applies any notes that are attached to transactions in the DataFrame. DataFrame needs to have
         an 'id' column. A category can also be passed in to find additional transactions with a SplitNote
@@ -288,7 +291,14 @@ class BudgetData:
             df = self.note_manager.apply_notes(df, category)
 
             # Clean up the result
-            df = df.drop('id', axis=1).sort_index()
+            drop_id = drop_id or self.RENDER_DROP_ID_COL
+            if drop_id:
+                df = df.drop('id', axis=1)
+
+            sort = sort or self.RENDER_SORT
+            if sort:
+                df = df.sort_index()
+
             self.debug(f'Done')
             return df
 
@@ -304,6 +314,8 @@ class BudgetData:
         return self._df.reset_index().set_index('id').loc[id_to_find]
 
     def df_from_ids(self, ids: List[str]) -> pd.DataFrame:
+        if isinstance(ids, str):
+            ids = [ids]
         df = pd.DataFrame([self.find_by_id(i) for i in ids])
         df.index.name = 'id'
         df = df.reset_index()

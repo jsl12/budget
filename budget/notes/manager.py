@@ -27,8 +27,11 @@ class NoteManager:
         if drop_dups:
             self.drop_duplicates()
 
-    def drop(self, id):
-        self.notes = self.notes.drop(id)
+    def drop(self, id, note_text):
+        print(f'Dropping note from {id}: {note_text}')
+        self.notes = self.notes[~self.notes.apply(
+            lambda n: (n.note == note_text) and (n.id == id)
+        )]
 
     def drop_duplicates(self):
         self.notes = self.notes[~self.notes.map(repr).duplicated()]
@@ -39,7 +42,7 @@ class NoteManager:
 
         self.logger.debug(f'{notes.shape[0]} notes loaded from \'{self.SQL_NOTE_TABLE}\'')
 
-        # Set up the index
+        # Set up the index, which will be the ID of the transaction the note is attached to
         notes.set_index(notes.columns[0], inplace=True)
 
         try:
