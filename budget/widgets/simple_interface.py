@@ -6,9 +6,9 @@ import pandas as pd
 import qgrid
 from ipywidgets import Layout as ly
 
-from budget import BudgetData
 from . import bars, utils
 from .opts import qgrid_opts
+from ..data import BudgetData
 from ..notes import note
 
 button_layout = {
@@ -19,7 +19,7 @@ button_layout = {
 @dataclass
 class SimpleInterface:
     bd: BudgetData
-    col_order = ['Account', 'Amount', 'Description', 'id']
+    col_order = ['Account', 'Amount', 'Category', 'Description', 'id']
 
     def __post_init__(self):
         self.bd.RENDER_DROP_ID_COL = False
@@ -65,7 +65,7 @@ class SimpleInterface:
         )
 
         self.output = widgets.Output()
-        self.table = qgrid.show_grid(self.bd._df[self.bd.unselected][::-1][self.col_order], **qgrid_opts)
+        self.table = qgrid.show_grid(pd.DataFrame(columns=self.bd._df.columns), **qgrid_opts)
         self.table.on('selection_changed', self.show_relevant_notes)
 
         self.id_bar = bars.IDBar()
@@ -89,6 +89,7 @@ class SimpleInterface:
             layout=ly(display='flex')
         )
 
+        self.render()
 
     def print_output(self, func, *args):
         """
@@ -135,7 +136,8 @@ class SimpleInterface:
             )
 
         try:
-            m &= self.bd.search(self.search.value)
+            if self.search.value != '':
+                m &= self.bd.search(self.search.value)
         except:
             print(f'error searching')
         else:
@@ -143,7 +145,7 @@ class SimpleInterface:
                 df = self.bd[m]
             else:
                 df = self.bd._df[m]
-            self.table.df = df[::-1][self.col_order]
+            self.table.df = df[::-1][self.col_order].copy()
 
     def show_relevant_notes(self, *args):
         if self.sel.shape[0] == 1:

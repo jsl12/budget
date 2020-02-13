@@ -4,7 +4,7 @@ import ipywidgets as widgets
 import pandas as pd
 import qgrid
 
-from budget import BudgetData
+from ..data import BudgetData
 
 
 @dataclass

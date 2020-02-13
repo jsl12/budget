@@ -21,7 +21,8 @@ class SelectTest(unittest.TestCase):
         self.assertTrue(self.bd[0:2].index.equals(self.bd._df.iloc[0:2].index))
 
     def test_date_select(self):
-        self.assertTrue(self.bd['2019'].index.equals(self.bd.df['2019'].index))
+        # TODO remove dependency on what actual year it is
+        self.assertTrue(self.bd['2020'].index.equals(self.bd.df['2020'].index))
 
 if __name__ == '__main__':
     unittest.main()

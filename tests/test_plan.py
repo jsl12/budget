@@ -35,7 +35,6 @@ class TestSimplePlan(unittest.TestCase):
         return
 
     def test_project(self):
-        df = self.plan.project(start=datetime.today(), end=100)
         df = self.plan.project(end=750)
         monthly = df[df['Name'] == 'Car Loan']
         self.assertEqual(monthly.index[0].month+1, monthly.index[1].month)

@@ -1,5 +1,5 @@
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import numpy as np
 import pandas as pd
@@ -55,35 +55,29 @@ def parse_date(input_str: str) -> datetime:
     raise ValueError(f'input \'{input_str}\' does not match any patterns')
 
 
-def date_range(start: datetime, end: datetime, freq: str) -> pd.DatetimeIndex:
-    m = re.match('^(?P<num>\d+)(?P<unit>[MWY])$', freq.upper())
-    if m is None:
-        try:
-            return pd.date_range(
-                start=start,
-                end=end,
-                freq=freq
-            )
-        except:
-            raise ValueError(f'invalid freq: {freq}')
-    elif m.group('unit') == 'Y':
-        return month_range_day(
-            start=start,
-            periods=int((end - start).days / 365)+1,
-            num=int(m.group('num'))*12
-        )
-    elif m.group('unit') == 'M':
-        return month_range_day(
-            start=start,
-            periods=int((end - start).days / 30)+1,
-            num=int(m.group('num'))
-        )
-    elif m.group('unit') == 'W':
-        return pd.date_range(
-            start=start,
-            end=end,
-            freq=f'{int(m.group("num"))*7}D'
-        )
+def date_range(start: datetime, end: datetime, freq: str, day_offset: int = None) -> pd.DatetimeIndex:
+    if start is None:
+        start = datetime.combine(datetime.today(), datetime.min.time())
+
+    if isinstance(end, int):
+        end = start + timedelta(days=end)
+
+    if freq == 'MS':
+        if start.month <= 1:
+            start = start.replace(month=12, year=start.year-1)
+        else:
+            start = start.replace(month=start.month-1)
+        if day_offset > 0:
+            day_offset -= 1
+
+    try:
+        res = pd.date_range(start=start, end=end, freq=freq)
+    except Exception as e:
+        raise
+
+    if day_offset is not None:
+        res += timedelta(days=day_offset)
+    return res
 
 
 def month_range_day(start: datetime, periods: int, num: int = 1):

@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 class BudgetPlan:
     def __init__(self, yaml_path: str):
         self.yaml_path = Path(yaml_path)
-        self.data = BudgetData(yaml_path)
+        self.data: BudgetData = BudgetData(yaml_path)
         if self.data.db_path.exists():
             self.data.load_sql()
 

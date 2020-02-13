@@ -3,8 +3,9 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 import pandas as pd
+import numpy as np
 
-from .utils import parse_date, date_range
+from . import utils
 
 
 @dataclass
@@ -18,7 +19,7 @@ class Expense:
 
     def __post_init__(self):
         if isinstance(self.date, str):
-            self.date = parse_date(self.date)
+            self.date = utils.parse_date(self.date)
         elif isinstance(self.date, datetime):
             self.date = datetime.combine(self.date.date(), datetime.min.time())
 
@@ -28,7 +29,7 @@ class Expense:
         if self.recur is not None:
             self.recur = self.recur.upper()
 
-    def project(self, start: datetime = None, end: datetime = None) -> pd.Series:
+    def project(self, end: datetime) -> pd.Series:
         """
         Returns a Series of Expenses based on a single, recurring recurring Expense
 
@@ -36,32 +37,32 @@ class Expense:
         :param end:
         :return:
         """
-        start = start or self.date
+        if self.recur is not None:
+            if self.date is None:
+                self.date = datetime.combine(datetime.today(), datetime.min.time())
 
-        if self.compile is not None:
-            dates = date_range(start=start, end=end, freq='1D')
-            res = pd.Series(
-                data=[self.daily for d in dates],
-                index=dates
-            )
+            if isinstance(end, int):
+                end = self.date + timedelta(days=end)
 
-            res = res.resample(
-                rule=self.compile,
-                label='right'
-            ).sum()
-            res = pd.Series(
-                data=[Expense(self.name, value, date) for date, value in res.iteritems()],
-                index=res.index
-            )
+            if self.compile is not None:
+                dates = utils.date_range(start=self.date, end=end, freq='D')
+                res = pd.Series(np.full(dates.shape[0], self.daily), dates)
+                res = res.resample(rule=self.compile, label='right').sum()
+                res = pd.Series(
+                    data=[Expense(self.name, value, date) for date, value in res.iteritems()],
+                    index=res.index
+                )
+            else:
+                dates = utils.date_range(start=self.date, end=end, freq=self.recur, day_offset=self.offset)
+                res = pd.Series(
+                    data=[Expense(self.name, self.amount, d.to_pydatetime()) for d in dates],
+                    index=dates
+                )
+
+            res = res[self.date:end]
+            return res
         else:
-            dates = date_range(start=start, end=end, freq=self.recur)
-            res = pd.Series(
-                data=[Expense(self.name, self.amount, d.to_pydatetime()) for d in dates],
-                index=dates
-            )
-
-            res.index += timedelta(days=self.offset)
-        return res
+            return pd.Series(data=[self], index=[self.date])
 
     @property
     def daily(self):
@@ -93,7 +94,7 @@ class Expense:
         period = input[1]
         try:
             compile_period = input[2]
-        except:
+        except IndexError:
             compile_period = None
 
         return Expense(
@@ -104,3 +105,14 @@ class Expense:
             compile=compile_period,
             offset=day_offset,
         )
+
+    def df(self, **kwargs):
+        s = self.project(**kwargs)
+        df = pd.DataFrame(
+            data={
+                'Name': np.full(s.shape[0], self.name),
+                'Amount': s.apply(lambda e: e.amount)
+            },
+            index=s.index
+        )
+        return df

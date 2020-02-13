@@ -49,30 +49,13 @@ class SimplePlan:
 
     def project(self, start: datetime = None, end: datetime = None) -> pd.DataFrame:
         if start is None:
-            start = datetime.today()
-        start = datetime.combine(start, datetime.min.time())
+            start = datetime.combine(datetime.today().date(), datetime.min.time())
 
         if isinstance(end, int):
             end = start + timedelta(days=end)
 
-        repeating = [e for e in self.exp
-            if e.date is None or e.recur is not None]
-        within_dates = self.exp[~self.exp.index.isna()][start:end].tolist()
-        all_expenses = []
-        for e in (repeating + within_dates):
-            if e.recur is not None:
-                all_expenses.extend(e.project(e.date or start, end))
-            else:
-                all_expenses.append(e)
+        df = pd.concat([e.df(end=end) for e in self.exp], sort=False).sort_index()[start:end]
 
-        df = pd.DataFrame(
-            data={
-                'Name': [e.name for e in all_expenses],
-                'Amount': [e.amount for e in all_expenses],
-                'Date': [e.date for e in all_expenses]
-            }
-        ).drop_duplicates()
-        df = df.set_index('Date').sort_index()
         df['Total'] = df['Amount'].cumsum()
         return df
 

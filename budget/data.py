@@ -112,6 +112,20 @@ class BudgetData:
         return self._df['id']
 
     @property
+    def categorization(self):
+        def find_cat(row):
+            try:
+                if row.any():
+                    res = row.index[row][-1]
+                    return res
+            except:
+                raise
+
+        if not hasattr(self, '_categorization'):
+            self._categorization = self._sel.apply(find_cat, axis=1)
+        return self._categorization
+
+    @property
     def amounts(self) -> pd.Series:
         # there should only be 1 column with numbers, the amounts column. This abstraction removes the dependence on the column name
         return self.df.select_dtypes('number').iloc[:, 0]
@@ -160,6 +174,7 @@ class BudgetData:
                     )
                 )
             )
+        self._df['Category'] = self.categorization
         self.debug('Done')
 
     def sql_context(self, path=None):

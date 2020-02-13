@@ -3,7 +3,7 @@ from dataclasses import dataclass
 import ipywidgets as widgets
 from IPython.display import clear_output
 
-from budget import BudgetPlan
+from ..plan import BudgetPlan
 
 
 @dataclass

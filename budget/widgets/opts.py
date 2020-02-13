@@ -31,6 +31,10 @@ qgrid_opts = {
         'id': {
             'minWidth': 30,
             'width': 50
+        },
+        'Category': {
+            'minWidth': 50,
+            'width': 100
         }
     }
 }
