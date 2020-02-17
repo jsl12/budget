@@ -2,8 +2,8 @@ import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
-import pandas as pd
 import numpy as np
+import pandas as pd
 
 from . import utils
 
@@ -44,25 +44,51 @@ class Expense:
             if isinstance(end, int):
                 end = self.date + timedelta(days=end)
 
-            if self.compile is not None:
-                dates = utils.date_range(start=self.date, end=end, freq='D')
-                res = pd.Series(np.full(dates.shape[0], self.daily), dates)
-                res = res.resample(rule=self.compile, label='right').sum()
-                res = pd.Series(
-                    data=[Expense(self.name, value, date) for date, value in res.iteritems()],
-                    index=res.index
+            dates = pd.date_range(
+                start=self.date,
+                end=end,
+                freq=self.recur,
+            )
+            if len(dates) < 2:
+                dates = pd.date_range(
+                    start=self.date,
+                    freq=self.recur,
+                    periods=2
                 )
-            else:
-                dates = utils.date_range(start=self.date, end=end, freq=self.recur, day_offset=self.offset)
-                res = pd.Series(
-                    data=[Expense(self.name, self.amount, d.to_pydatetime()) for d in dates],
-                    index=dates
+                dates = pd.date_range(
+                    start=dates[0] - (dates[-1] - dates[0] + pd.Timedelta(days=3)),
+                    freq=self.recur,
+                    periods=2
                 )
 
+            if self.compile is None:
+                amt = self.amount
+            else:
+                amt = round(self.amount / (dates[1] - dates[0]).days, 2)
+
+            res = pd.Series(data=np.full(dates.shape[0], amt), index=dates)
+
+            if self.compile is not None:
+                res = res.resample('D').pad()[self.date:]
+                res = res.resample(self.compile).sum()
+
+            if self.offset is not None:
+                freq = self.compile or self.recur
+                if freq == 'MS':
+                    offset = self.offset - 1
+                else:
+                    offset = self.offset
+                res.index += timedelta(days=offset)
+
+            # prevents dates that are out of range
             res = res[self.date:end]
+
+            # prevents recurring charges compiled based on a number of days from all showing up on the first day
+            if 'D' in self.recur or (self.compile is not None and 'D' in self.compile):
+                res = res[res.index != self.date]
             return res
         else:
-            return pd.Series(data=[self], index=[self.date])
+            return pd.Series(data=[self.amount], index=[self.date])
 
     @property
     def daily(self):
@@ -111,7 +137,7 @@ class Expense:
         df = pd.DataFrame(
             data={
                 'Name': np.full(s.shape[0], self.name),
-                'Amount': s.apply(lambda e: e.amount)
+                'Amount': s.values
             },
             index=s.index
         )

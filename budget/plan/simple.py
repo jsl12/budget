@@ -29,7 +29,9 @@ class SimplePlan:
             data=[{
                 'Name': e.name,
                 'Amount': float(e.amount),
-                'Freq': getattr(e, 'recur', '')
+                'Recur': getattr(e, 'recur', ''),
+                'Compile': getattr(e, 'compile', ''),
+                'Offset': getattr(e, 'offset', ''),
             } for e in self.exp],
             index=pd.Index(
                 data=[e.date for e in self.exp],

@@ -5,11 +5,11 @@ qgrid_opts = {
     },
     'column_definitions': {
         'Date': {
-            'minWidth': 50,
+            'minWidth': 80,
             'width': 80
         },
         'Amount': {
-            'minWidth': 100,
+            'minWidth': 50,
             'width': 100
         },
         'Account': {
@@ -37,4 +37,13 @@ qgrid_opts = {
             'width': 100
         }
     }
+}
+bar_layout = {
+    'display': 'flex',
+    'width': 'auto',
+    'padding': '5px'
+}
+field_layout = {
+    'display': 'flex',
+    'flex': '1 1'
 }

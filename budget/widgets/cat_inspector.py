@@ -3,8 +3,8 @@ import pandas as pd
 import qgrid
 from IPython.display import clear_output
 
-from .bars import bar_layout
-from .opts import qgrid_opts
+from .components import freq_dropdown
+from .opts import qgrid_opts, bar_layout
 from ..data import BudgetData
 
 
@@ -15,20 +15,13 @@ class CatInspector(widgets.VBox):
         if cats is None:
             cats = bd._sel.columns.tolist()
 
+        qgrid_opts['column_definitions']['Description']['width'] = 150
+        qgrid_opts['grid_options']['forceFitColumns'] = True
+
         kwargs['children'] = [
             widgets.HBox(
                 children=[
-                    widgets.Dropdown(
-                        options=[
-                            'MS',
-                            'M',
-                            '10D',
-                            'W-WED',
-                            '4D',
-                            'Y'
-                        ],
-                        layout={'width': '100px'}
-                    ),
+                    freq_dropdown(),
                     widgets.Dropdown(
                         options=cats,
                         value=cats[0],
@@ -40,8 +33,31 @@ class CatInspector(widgets.VBox):
                     )
                 ]
             ),
-            qgrid.show_grid(pd.DataFrame(columns=bd.df.columns), **qgrid_opts),
-            qgrid.show_grid(pd.DataFrame(columns=bd.df.columns), **qgrid_opts),
+            widgets.HBox(
+                children=[
+                    widgets.Box(
+                        children=[
+                            qgrid.show_grid(pd.DataFrame(columns=bd.df.columns), **qgrid_opts),
+                        ],
+                        layout={
+                            'display': 'flex',
+                            'width': '200px',
+                            'padding': '5px'
+                        }
+                    ),
+                    widgets.Box(
+                        children=[
+                            qgrid.show_grid(pd.DataFrame(columns=bd.df.columns), **qgrid_opts),
+                        ],
+                        layout={
+                            'display': 'flex',
+                            'flex': '1 1',
+                            'width': 'auto',
+                            'padding': '5px'
+                        }
+                    ),
+                ]
+            ),
             widgets.Output()
         ]
 
@@ -70,11 +86,11 @@ class CatInspector(widgets.VBox):
 
     @property
     def report(self):
-        return self.children[1]
+        return self.children[1].children[0].children[0]
 
     @property
     def transactions(self):
-        return self.children[2]
+        return self.children[1].children[1].children[0]
 
     @property
     def output(self):
@@ -88,13 +104,20 @@ class CatInspector(widgets.VBox):
         grouped = df.groupby(pd.Grouper(freq=self.freq))
         self.groups = {date: df for date, df in grouped}
         self.report.df = grouped.sum().sort_index(ascending=False)
+        self.report.change_selection()
 
     def show_transactions(self, *args):
         idx = self.report.get_selected_df().index
-        res = pd.concat([self.groups[i] for i in idx]).sort_index()
-        if 'id' in res.columns:
-            res = res.drop('id', axis=1)
-        self.transactions.df = res.sort_index(ascending=False)
-        with self.output:
-            clear_output()
-            print(f'Total: {res["Amount"].sum():.2f}')
+        try:
+            res = pd.concat([self.groups[i] for i in idx]).sort_index()
+        except ValueError:
+            with self.output:
+                clear_output()
+                print(f'Nothing selected')
+        else:
+            if 'id' in res.columns:
+                res = res.drop('id', axis=1)
+            self.transactions.df = res.sort_index(ascending=False)
+            with self.output:
+                clear_output()
+                print(f'Total: {res["Amount"].sum():.2f}')

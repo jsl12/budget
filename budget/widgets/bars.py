@@ -1,18 +1,8 @@
 import ipywidgets as widgets
 import pandas as pd
 
+from .opts import bar_layout, field_layout
 from ..data import BudgetData
-
-bar_layout = {
-    'display': 'flex',
-    'width': 'auto',
-    'padding': '5px'
-}
-
-field_layout = {
-    'display': 'flex',
-    'flex': '1 1'
-}
 
 
 class RegexSearchBar(widgets.Text):
