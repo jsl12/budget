@@ -9,7 +9,7 @@ import budget
 
 class NoteTestCase(TestCase):
     def setUp(self) -> None:
-        self.bd = gen.gen_bd()
+        self.bd: budget.BudgetData = gen.gen_bd()
 
     def test_link_notes(self):
         self.bd.add_note(self.bd.df.iloc[-1], f'link: {self.bd.id[0]}')
@@ -53,6 +53,15 @@ class NoteTestCase(TestCase):
         self.assertTrue(original_df.equals(self.bd._df))
         self.assertTrue(original_sel.equals(self.bd._sel))
         self.assertTrue(original_notes.equals(self.bd._notes))
+
+    def test_note_df(self):
+        self.bd.add_note(self.bd.df.iloc[-1], f'link: {self.bd.id[0]}')
+        self.bd.add_note(self.bd.df.iloc[-2], f'link: {self.bd.id[0]}')
+        self.bd.add_note(self.bd.df.iloc[-1], f'custom note')
+        df = self.bd.note_df(self.bd._df)
+        self.assertEqual(3, df.shape[0])
+        df = self.bd.note_df(self.bd._df.iloc[:1])
+        self.assertEqual(0, df.shape[0])
 
 if __name__ == '__main__':
     unittest.main()

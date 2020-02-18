@@ -9,7 +9,6 @@ from ipywidgets import Layout as ly
 from . import bars, utils
 from .opts import qgrid_opts
 from ..data import BudgetData
-from ..notes import note
 
 button_layout = {
     'width':  '100px'
@@ -148,39 +147,12 @@ class SimpleInterface:
             self.table.df = df[::-1][self.col_order].copy()
 
     def show_relevant_notes(self, *args):
-        if self.sel.shape[0] == 1:
-            target_id = self.sel['id'].values.tolist()
-            self.id_bar.value = target_id[0]
-            notes = self.bd.note_manager.get_notes_by_id(target_id)
-            linked = self.bd.note_manager.get_notes_by_id(self.bd.note_manager.linked_ids(self.sel))
-            notes += linked
-            df = pd.DataFrame(
-                data={
-                    'Amount': [self.bd.find_by_id(n.id)['Amount'] for n in notes],
-                    'Description': [self.bd.find_by_id(n.id)['Description'] for n in notes],
-                    'Note': [n.note for n in notes],
-                    'Linked': [
-                        self.bd.find_by_id(n.target)['Description']
-                        if isinstance(n, note.Link) else
-                        ''
-                        for n in notes
-                    ],
-                    'id': [n.id for n in notes]
-                },
-                index=pd.DatetimeIndex(
-                    data=[self.bd.find_by_id(n.id)['Date'] for n in notes],
-                    name='Date'
-                )
-            ).sort_index()
+        cols = self.col_order[:]
+        cols.insert(-1, 'Note')
+        self.note_table.df = self.bd.note_df(self.sel)[cols]
 
-            # for targets that are targeted by linked notes, it's useful to see the original transaction amount
-            if len(linked) > 0:
-                original = self.bd.df_from_ids(target_id)
-                df = pd.concat([original[[c for c in df.columns if c in original]], df], sort=False)
-
-            self.note_table.df = df
-        else:
-            self.id_bar.value = ''
+        if self.sel.shape[0] > 0:
+            self.id_bar.value = self.sel['id'][0]
 
     def drop_selected_note(self, df: pd.DataFrame):
         for date, row in df.iterrows():

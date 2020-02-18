@@ -29,4 +29,5 @@ def gen_bd():
         index=bd._df.index,
         columns=[chr(ord('A') + i) for i in range(3)]
     )
+    bd._df['Category'] = bd.categorization
     return bd

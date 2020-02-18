@@ -7,6 +7,9 @@ import pandas as pd
 
 from . import utils
 
+import logging
+
+LOGGER = logging.getLogger(__name__)
 
 @dataclass
 class Expense:
@@ -46,8 +49,8 @@ class Expense:
 
             dates = pd.date_range(
                 start=self.date,
-                end=end,
                 freq=self.recur,
+                end=end,
             )
             if len(dates) < 2:
                 dates = pd.date_range(
@@ -55,30 +58,46 @@ class Expense:
                     freq=self.recur,
                     periods=2
                 )
-                dates = pd.date_range(
-                    start=dates[0] - (dates[-1] - dates[0] + pd.Timedelta(days=3)),
-                    freq=self.recur,
-                    periods=2
-                )
-
-            if self.compile is None:
-                amt = self.amount
-            else:
-                amt = round(self.amount / (dates[1] - dates[0]).days, 2)
-
-            res = pd.Series(data=np.full(dates.shape[0], amt), index=dates)
+            if dates[0] > self.date:
+                try:
+                    dates = dates.union(pd.date_range(
+                        start=self.date,
+                        freq=f'-{dates.freqstr}',
+                        periods=2
+                    ))
+                except ValueError as e:
+                    dates = dates.union(pd.date_range(
+                        start=self.date,
+                        freq=f'-1{dates.freqstr}',
+                        periods=2
+                    ))
 
             if self.compile is not None:
-                res = res.resample('D').pad()[self.date:]
-                res = res.resample(self.compile).sum()
+                total = self.amount * (dates.shape[0] - 1)
+                amt = round(total / dates.to_series().diff().sum().days, 2)
+            else:
+                amt = self.amount
 
-            if self.offset is not None:
+            res = pd.Series(data=np.full(dates.shape[0], amt), index=dates)
+            LOGGER.debug('-' * 50)
+            LOGGER.debug(f'Amount: {amt}')
+            LOGGER.debug(res.index)
+
+            if self.compile is not None:
+                res = res.resample('D').pad()
+                LOGGER.debug(f'{res.index[0]} to {res.index[-1]}')
+                res = res[self.date:end]
+                res = res.resample(self.compile).sum()
+                LOGGER.debug(res.index)
+
+            if self.offset > 0:
                 freq = self.compile or self.recur
                 if freq == 'MS':
                     offset = self.offset - 1
                 else:
                     offset = self.offset
                 res.index += timedelta(days=offset)
+                LOGGER.debug(res.index)
 
             # prevents dates that are out of range
             res = res[self.date:end]

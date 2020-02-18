@@ -1,6 +1,6 @@
 import ipywidgets as widgets
 
-def freq_dropdown():
+def freq_dropdown(**kwargs):
     return widgets.Dropdown(
     options=[
         'Y',
@@ -8,8 +8,12 @@ def freq_dropdown():
         'M',
         '2W-FRI',
         '10D',
+        'W',
+        'W-FRI',
         'W-WED',
         '4D',
+        None
     ],
-    layout={'width': '80px'}
+    layout={'width': '80px'},
+    **kwargs
 )

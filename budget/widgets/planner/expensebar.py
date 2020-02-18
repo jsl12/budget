@@ -4,6 +4,7 @@ from pathlib import Path
 import ipywidgets as widgets
 import yaml
 
+from . import utils
 from ..components import freq_dropdown
 from ..opts import bar_layout
 from ...plan import Expense, SimplePlan
@@ -58,10 +59,10 @@ class ExpenseBar(widgets.HBox):
         if 'layout' not in kwargs:
             kwargs['layout'] = bar_layout
 
-        self.name_field = widgets.Text(placeholder='Expense Name', value=name, layout={'width': '150px'})
+        self.name_field = widgets.Text(placeholder='Expense Name', value=name, layout={'width': '125px'})
         self.amount_field = widgets.FloatText(value=value, layout={'width': '75px'})
         self.recur_field = freq_dropdown()
-        self.compile_field = freq_dropdown()
+        self.compile_field = freq_dropdown(value=None)
 
         kwargs['children'] = [
             self.name_field,
@@ -83,8 +84,6 @@ class ExpenseBar(widgets.HBox):
 
         if compile is not None:
             self.compile = compile
-        else:
-            self.compile = freq
 
         for child in self.children[1:5]:
             child.observe(self.text, 'value')
@@ -144,60 +143,27 @@ class ExpenseBar(widgets.HBox):
         return self.children[-1]
 
     def text(self, *args):
-        if self.freq is not None:
+        text_args = {
+            'amount': self.amount,
+            'recur': self.freq,
+            'compile': self.compile,
+        }
+
+        try:
             m = freq_regex.match(self.freq)
-            freq = m.group('freq')
-            if 'Y' in freq:
-                period = 'year'
-            elif 'M' in freq:
-                period = 'month'
-            elif 'W' in freq:
-                period = 'week'
-            elif 'D' in freq:
-                period = 'day'
-
-            if m.group('mult') is not None:
-                period += 's'
-                suffix = f'per {m.group("mult")} {period}'
-            else:
-                suffix = f'per {period}'
-
-            if self.compile is not None:
-                m = freq_regex.match(self.compile)
-                cfreq = m.group('freq').upper()
-                cmult = m.group('mult')
-                if cfreq == 'Y':
-                    if cmult is not None:
-                        comp = f'every {cmult} years'
-                    else:
-                        comp = f'every year'
-                elif cfreq == 'MS':
-                    comp = 'at the start of the month'
-                elif cfreq == 'M':
-                    comp = 'at the end of the month'
-                elif 'W' in cfreq:
-                    if len(cfreq) > 1:
-                        comp = f'on {days[cfreq[-3:]]}'
-                        if 'W' not in freq:
-                            comp += 's'
-                    elif cmult is not None:
-                        comp = f'every {cmult} weeks'
-                    else:
-                        comp = f'every week'
-                elif cfreq == 'D':
-                    if cmult is not None:
-                        comp = f'every {cmult} days'
-                    else:
-                        comp = f'every day'
-                else:
-                    raise ValueError(f'problem parsing compile freq: {cfreq}')
-
-                if comp != '':
-                    comp = f', charged {comp}'
-            else:
-                comp = ''
-
-            self.label.value = f'${self.amount:.02f} {suffix}{comp}'
+        except TypeError:
+            m = None
         else:
-            self.label.value = f'${self.amount:.02f} one time expense'
+            if m is not None:
+                text_args['mult'] = m.group('mult')
 
+        try:
+            m = freq_regex.match(self.compile)
+        except TypeError:
+            m = None
+        else:
+            if m is not None:
+                text_args['c_mult'] = m.group('mult')
+
+        text = utils.format_text(**text_args)
+        self.label.value = text

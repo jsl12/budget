@@ -65,12 +65,13 @@ class Planner(widgets.VBox):
         if len(self.es.children) > 0:
             with self.output:
                 clear_output()
-                df = self.plan.project(end=self.projection_length).groupby(level=0).sum().resample('D').pad()
+                df = self.table.get_changed_df().sort_values('Total').groupby(level=0).sum().resample('D').pad()
                 if not hasattr(self, 'fig'):
                     register_matplotlib_converters()
                     self.fig, self.ax = plt.subplots(figsize=(19.2, 10.8))
                 else:
                     self.ax.clear()
+                self.ax.grid(True)
                 self.ax.plot(
                     df.index.to_pydatetime(),
                     df['Total'].values
@@ -85,6 +86,10 @@ class Planner(widgets.VBox):
     @property
     def plan(self) -> SimplePlan:
         return self.children[0].plan
+
+    @property
+    def table(self):
+        return self.children[-2]
 
     @property
     def output(self):

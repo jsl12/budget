@@ -6,6 +6,7 @@ from functools import reduce
 from pathlib import Path
 from typing import List, Dict
 
+import numpy as np
 import pandas as pd
 import yaml
 
@@ -13,7 +14,7 @@ from . import processing
 from . import utils
 from .load import Loader
 from .notes import NoteManager
-from .notes.note import Category
+from .notes.note import Category, Note
 
 
 class BudgetData:
@@ -133,7 +134,8 @@ class BudgetData:
     @property
     def unselected(self) -> pd.DataFrame:
         return ~self._sel.any(axis=1) & ~self._df['id'].isin(
-            [n.id for n in self.note_manager.get_notes_by_type(Category)]
+            # ids of notes that have a Category note attached
+            self.note_manager.get_notes_by_type(Category).apply(lambda n: n.id)
         )
 
     @property
@@ -251,7 +253,7 @@ class BudgetData:
             rgx = re.compile(input, re.IGNORECASE)
             return self.df[self.id.isin([n.id for n in self._notes.values if rgx.search(n.note)])]
         elif isinstance(input, type):
-            return self.df[self.id.isin([n.id for n in self.note_manager.get_notes_by_type(input)])]
+            return self.df[self.id.isin(self.note_manager.get_notes_by_type(input).apply(lambda n: n.id))]
         else:
             raise TypeError(f'invalid input for BudgetData.search_notes(): {input}')
 
@@ -286,17 +288,16 @@ class BudgetData:
                 df = pd.DataFrame(df).transpose()
 
             self.debug(f'Starting render of transaction DataFrame')
-            # Append the manually categorized
-            df = df.append(self._df[self.id.isin(self.note_manager.manual_ids(category))])
 
-            # Append transactions with relevant SplitNotes attached
-            df = df.append(self._df[self.id.isin(self.note_manager.split_ids(category))])
+            if category is not None:
+                # Append based on notes that involve the category
+                df = df.append(self.df_from_cat_notes(category))
 
-            # Append the linked
-            df = df.append(self._df[self.id.isin(self.note_manager.linked_ids(df))])
+            # find the transactions that are linked to ones in the df
+            df = df.append(self.linked_sources(df))
 
             # drops duplicates in case multiple types of notes are linked to the same transaction
-            df = df.drop_duplicates(keep='first')
+            df = df.drop_duplicates('id', keep='first')
 
             # Remove gifts from categories
             if category is not None:
@@ -317,6 +318,38 @@ class BudgetData:
             self.debug(f'Done')
             return df
 
+    def df_from_cat_notes(self, category: str) -> pd.DataFrame:
+        """
+        Gets transactions based on notes that involve categories:
+            - manual categorizations of the form 'cat: <CATEGORY>'
+            - split notes of the form 'split: ..., 1/2 <CATEGORY>, ...'
+
+        :param category: category name as it appears in the user YAML file
+        :return: DataFrame of matching transactions
+        """
+        return pd.concat(
+            [
+                # manually categorized
+                self._df[self.id.isin(
+                    # get ids of notes with a 'category' attribute that matches the category argument
+                    self.note_manager.manual_ids(category)
+                )],
+
+                # with relevant splitnotes
+                self._df[self.id.isin(
+                    # get ids of notes with that have the category argument in one of its parts
+                    self.note_manager.split_ids(category)
+                )]
+            ]
+        )
+
+    def linked_sources(self, df: pd.DataFrame):
+        # select from the main DataFrame
+        return self._df[
+            # transactions with Link notes attached that target transactions in the DataFrame
+            self.id.isin(self.note_manager.linked_ids(df))
+        ]
+
     def add_note(self, df: pd.DataFrame, note: str) -> None:
         if isinstance(df, pd.Series):
             df = pd.DataFrame(df).transpose()
@@ -326,14 +359,12 @@ class BudgetData:
         self.note_manager.drop_duplicates()
 
     def find_by_id(self, id_to_find: str) -> pd.Series:
-        return self._df.reset_index().set_index('id').loc[id_to_find]
+        return self._df.reset_index().set_index('id', drop=False).loc[id_to_find]
 
     def df_from_ids(self, ids: List[str]) -> pd.DataFrame:
         if isinstance(ids, str):
             ids = [ids]
         df = pd.DataFrame([self.find_by_id(i) for i in ids])
-        df.index.name = 'id'
-        df = df.reset_index()
         try:
             return df.set_index('Date')
         except KeyError:
@@ -351,3 +382,30 @@ class BudgetData:
             return pd.DataFrame(columns=self.df.columns.tolist() + ['Note'])
         else:
             return df.drop('id', axis=1).sort_index(ascending=False)
+
+    def note_df(self, df: pd.DataFrame) -> pd.DataFrame:
+        try:
+            directly_attached_note_ids= df['id'][df['id'].isin(self.notes.index)].values
+            linked_note_ids = self.note_manager.linked_ids(df)
+            ids = np.union1d(
+                directly_attached_note_ids,
+                linked_note_ids
+            )
+
+            # using the transaction ids to index the notes
+            # this will also pick up multiple notes attached to a single transaction
+            notes = self._notes.loc[ids]
+        except KeyError:
+        #     happens when there are no notes
+            return pd.DataFrame(columns=df.columns)
+        else:
+            res = self.df_from_ids(notes.index)
+
+            if res is not None:
+                res['Note'] = notes.apply(lambda n: n.note if isinstance(n, Note) else '').values
+                linked_targets = np.unique(self._notes.loc[linked_note_ids].apply(lambda n: n.target).values)
+                linked_sources = self._df[self.id.isin(linked_targets)]
+                res = res.append(linked_sources, sort=False)
+                return res.sort_index()
+            else:
+                return pd.DataFrame(columns=df.columns.tolist() + ['Note'])

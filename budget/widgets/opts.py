@@ -1,6 +1,6 @@
 qgrid_opts = {
     'grid_options': {
-        'forceFitColumns': False,
+        'forceFitColumns': True,
         'autoHeight': False
     },
     'column_definitions': {
@@ -18,7 +18,7 @@ qgrid_opts = {
         },
         'Description': {
             'minWidth': 100,
-            'width': 300
+            'width': 500
         },
         'Note': {
             'minWidth': 100,

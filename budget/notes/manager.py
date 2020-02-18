@@ -5,6 +5,7 @@ from typing import List
 
 import pandas as pd
 
+from . import note, split
 from .note import Note, Link, Category
 from .split import SplitNote
 
@@ -57,51 +58,112 @@ class NoteManager:
     def save_notes(self, con):
         self.notes.map(repr).to_sql(name=self.SQL_NOTE_TABLE, con=con, if_exists='replace')
 
-    def get_notes_by_id(self, ids: List[str]) -> List[Note]:
-        return list(self.notes[self.notes.index.isin(ids)].values)
+    def get_notes_by_id(self, ids: List[str]) -> pd.Series:
+        return self.notes[self.notes.apply(lambda n: n.id in ids)]
 
-    def get_notes_by_type(self, typ: type) -> List[Note]:
+    def get_notes_by_type(self, typ: type) -> pd.Series:
         # doesn't use isinstance() to prevent subtypes from being selected
-        return [n for n in self.notes.values if type(n) is typ]
+        return self.notes[self.notes.apply(lambda n: type(n) is typ)]
 
-    def manual_ids(self, cat: str):
-        return [n.id for n in self.get_notes_by_type(Category) if n.category == cat]
+    def manual_ids(self, cat: str) -> pd.Series:
+        """
+        Gets ids of transactions that have been manually categorized as the given category
 
-    def split_ids(self, cat: str) -> List[str]:
-        return [n.id for n in self.get_notes_by_type(SplitNote) if cat in n.parts]
+        :param cat:
+        :return:
+        """
+        return self.notes[
+            # select from notes
+            self.notes.apply(
+                # the ones which are both a Category type and have a matching categorization
+                lambda n: isinstance(n, note.Category) and n.category == cat
+            )
+        ].apply(lambda n: n.id)
 
-    def linked_ids(self, df: pd.DataFrame) -> List[str]:
-        return [n.id for n in self.get_notes_by_type(Link) if n.target in df['id'].values]
+    def split_ids(self, cat: str) -> pd.Series:
+        return self.notes[
+            # select from notes
+            self.notes.apply(
+                # the ones which are both a SplitNote type and have the category in one of its parts
+                lambda n: isinstance(n, split.SplitNote) and cat in n.parts
+            )
+        # convert to the value of the id attribute of each note
+        ].apply(lambda n: n.id)
 
-    def apply_notes(self, df: pd.DataFrame, cat: str) -> List[str]:
-        # relevant notes are ones who are attached to transaction ids in the DataFrame
-        relevant_notes = self.get_notes_by_id(df['id'].values)
+    def linked_ids(self, df: pd.DataFrame) -> pd.Series:
+        """
+        Gets ids of transactions that target those in the given DataFrame
+        Example:
+            Transactions A and B are both linked to transaction C, which appears in the given DataFrame
+            Returns a Series of ids that include the ids of A and B
+
+        :param df:
+        :return:
+        """
+        return self.notes[
+            # select from notes
+            self.notes.apply(
+                # the ones which are both a Link type and have a target id in the given DataFrame
+                lambda n: isinstance(n, note.Link) and n.target in df['id'].values
+            )
+        # convert to the value of the id attribute of each note
+        ].apply(lambda n: n.id).values
+
+    def apply_linked(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Applies Link notes in the given DataFrame.
+        The DataFrame needs to include both the original transactions and the ones linked to them
+
+        :param df:
+        :return:
+        """
+        link_notes = self.get_notes_by_type(note.Link)
+        source_in_df = link_notes.apply(lambda n: n.id in df['id'].values)
+        target_in_df = link_notes.apply(lambda n: n.target in df['id'].values)
+        # assert (target_in_df & ~source_in_df).any()
+
         df = df.reset_index().set_index('id')
 
-        for n in relevant_notes:
-            if isinstance(n, SplitNote):
-                original_val = df.loc[n.id, 'Amount']
-                if cat in n.parts:
-                    df.loc[n.id, 'Amount'] = 0
-                    for target, s_obj in n.parts.items():
-                        mod_val = s_obj.modify(original_val)
-                        if target == cat:
-                            df.loc[n.id, 'Amount'] += mod_val
-                else:
-                    for target, s_obj in n.parts.items():
-                        mod_val = s_obj.modify(original_val)
-                        df.loc[n.id, 'Amount'] -= mod_val
-
-            elif isinstance(n, Link):
-                try:
-                    df.loc[n.target, 'Amount'] += df.loc[n.id, 'Amount']
-                except KeyError:
-                    # this happens if a transaction with a Link note attached gets processed, but the transaction it's
-                    # targeting is not
-                    pass
+        try:
+            # if both source and target exist in the DataFrame, add the source Amount to the target Amount
+            for n in link_notes[source_in_df & target_in_df]:
+                df.loc[n.target, 'Amount'] += df.loc[n.id, 'Amount']
+            # set the values of all source transactions to 0
+            for n in link_notes[source_in_df]:
                 df.loc[n.id, 'Amount'] = 0
+        except Exception as e:
+            raise
 
         df = df.reset_index().set_index(df.columns[0])
+        return df
+
+    def apply_split(self, df: pd.DataFrame, cat: str) -> pd.DataFrame:
+        split_notes = self.get_notes_by_type(split.SplitNote)
+        for_this_cat = split_notes.apply(lambda n: cat in n.parts)
+        trans_in_df = split_notes.apply(lambda n: n.id in df['id'].values)
+
+        df = df.reset_index().set_index('id')
+
+        try:
+            # If the split is for this category, set the Amount equal to the modified value
+            for n in split_notes[trans_in_df & for_this_cat]:
+                orig_val = df.loc[n.id, 'Amount']
+                df.loc[n.id, 'Amount'] = n.parts[cat].modify(orig_val)
+            # If the split is not for this category, then subtract all the other modified values
+            for n in split_notes[trans_in_df & ~for_this_cat]:
+                orig_val = df.loc[n.id, 'Amount']
+                for target_cat, split_obj in n.parts.items():
+                    df.loc[n.id, 'Amount'] -= split_obj.modify(orig_val)
+
+        except Exception as e:
+            raise
+
+        df = df.reset_index().set_index(df.columns[0])
+        return df
+
+    def apply_notes(self, df: pd.DataFrame, cat: str) -> pd.DataFrame:
+        df = self.apply_linked(df)
+        df = self.apply_split(df, cat)
         return df
 
     @staticmethod
