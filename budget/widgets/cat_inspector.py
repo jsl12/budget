@@ -12,6 +12,9 @@ class CatInspector(widgets.VBox):
     def __init__(self, bd: BudgetData, cats=None, **kwargs):
         self.bd = bd
 
+        if not hasattr(self.bd, '_df'):
+            self.bd.load_sql()
+
         if cats is None:
             cats = bd._sel.columns.tolist()
 

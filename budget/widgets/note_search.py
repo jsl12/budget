@@ -1,41 +1,42 @@
-from dataclasses import dataclass
-
 import ipywidgets as widgets
 import pandas as pd
 import qgrid
 
+from .opts import qgrid_opts, bar_layout
 from ..data import BudgetData
 
 
-@dataclass
-class NoteSearch:
-    bd: BudgetData
-
-    def __post_init__(self):
-        self.interface = widgets.VBox([
-            widgets.Text(description='Regex: ', placeholder='Type a regex here'),
+class NoteSearch(widgets.VBox):
+    def __init__(self, bd: BudgetData, *args, **kwargs):
+        self.bd = bd
+        kwargs['children'] = [
+            widgets.HBox(
+                children=[
+                    widgets.Label('Search regex'),
+                    widgets.Text(placeholder='Type a regex here')
+                ],
+                layout=bar_layout
+            ),
             widgets.Output(),
-            qgrid.show_grid(self.bd.df_note_search(''))
-        ])
+            qgrid.show_grid(self.bd.df_note_search(''), **qgrid_opts)
+        ]
+        super().__init__(*args, **kwargs)
+        self.children[0].children[-1].observe(self.render, 'value')
 
-        def render_wrapper(change_dict):
-            self.render()
-
-        self.interface.children[0].observe(render_wrapper, names='value')
+    @property
+    def search(self):
+        return self.children[0].children[-1]
 
     @property
     def table(self):
-        return self.interface.children[-1]
+        return self.children[-1]
 
     @property
     def output(self):
-        return self.interface.children[1]
+        return self.children[1]
 
-    def render(self):
-        query = self.interface.children[0].value
-        with self.output:
-            # print(f'Searching for {query}')
-            pass
+    def render(self, *args):
+        query = self.search.value
         df = self.bd.df_note_search(query)
         if df is not None:
             self.table.df = df
