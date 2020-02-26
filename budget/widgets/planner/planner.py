@@ -30,12 +30,12 @@ class Planner(widgets.VBox):
             }
 
         if expenses is not None and all([isinstance(e, Expense) for e in expenses]):
-            self.es = ExpenseSection(expenses=expenses)
+            self.expense_section = ExpenseSection(expenses=expenses)
         else:
-            self.es = ExpenseSection()
+            self.expense_section = ExpenseSection()
 
         kwargs['children'] = [
-            self.es,
+            self.expense_section,
             widgets.Button(description='Add Expense'),
             widgets.HBox(
                 children=[
@@ -58,14 +58,16 @@ class Planner(widgets.VBox):
         self.children[2].children[2].on_click(self.plot)
 
     def project(self, *args):
-        if len(self.es.children) > 0:
-            self.children[3].df = self.es.project(end=self.projection_length)
+        if len(self.expense_section.children) > 0:
+            self.children[3].df = self.expense_section.project(end=self.projection_length)
 
     def plot(self, *args):
-        if len(self.es.children) > 0:
+        if len(self.expense_section.children) > 0:
             with self.output:
-                clear_output()
-                df = self.table.get_changed_df().sort_values('Total').groupby(level=0).sum().resample('D').pad()
+                df = self.table.get_changed_df().sort_index()
+                df = df.drop('Total', axis=1).sort_index().groupby(level=0).sum()
+                df['Total'] = df['Amount'].cumsum()
+
                 if not hasattr(self, 'fig'):
                     register_matplotlib_converters()
                     self.fig, self.ax = plt.subplots(figsize=(19.2, 10.8))
@@ -76,6 +78,8 @@ class Planner(widgets.VBox):
                     df.index.to_pydatetime(),
                     df['Total'].values
                 )
+
+                clear_output()
                 display(self.fig)
 
 
@@ -96,18 +100,18 @@ class Planner(widgets.VBox):
         return self.children[-1]
 
     def add_expense(self, *args):
-        exp = self.es.children
+        exp = self.expense_section.children
         new = ExpenseBar()
         new.children = [self.remove_button_factory()] + list(new.children)
         for child in new.project_children:
             child.observe(self.project, 'value')
-        self.es.children = list(exp) + [new]
+        self.expense_section.children = list(exp) + [new]
 
     def remove_expense(self, *args):
-        self.es.children = [bar for bar in self.es.children if not bar.children[0].value]
+        self.expense_section.children = [bar for bar in self.expense_section.children if not bar.children[0].value]
 
     def setup_expense_bar(self):
-        for bar in self.es.children:
+        for bar in self.expense_section.children:
             bar.children = [self.remove_button_factory()] + list(bar.children)
             for child in bar.project_children:
                 child.observe(self.project, 'value')
