@@ -161,3 +161,10 @@ class Expense:
             index=s.index
         )
         return df
+
+    @property
+    def line(self):
+        return pd.Series(
+            data=[self.name, self.amount],
+            index=pd.Index(['Name', 'Amount'], name=self.date)
+        )

@@ -100,6 +100,13 @@ class BudgetData:
         return self.cfg['Categories']
 
     @property
+    def exclude(self):
+        try:
+            return self.cfg['Exclude Notes']
+        except KeyError as e:
+            return
+
+    @property
     def df(self) -> pd.DataFrame:
         if not hasattr(self, '_df'):
             self.load_sql()
@@ -299,9 +306,11 @@ class BudgetData:
             # drops duplicates in case multiple types of notes are linked to the same transaction
             df = df.drop_duplicates('id', keep='first')
 
-            # Remove gifts from categories
-            if category is not None:
-                df = df[~df['id'].isin(self.notes[self.notes.str.contains('gift')].index.values)]
+            # Remove the excluded notes
+            exc = self.exclude
+            if exc is not None:
+                for excluded_note in exc:
+                    df = df[~df['id'].isin(self.notes[self.notes.str.contains(excluded_note)].index.values)]
 
             # Apply all the notes
             df = self.note_manager.apply_notes(df, category)

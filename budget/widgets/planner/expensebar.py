@@ -81,9 +81,7 @@ class ExpenseBar(widgets.HBox):
         super().__init__(**kwargs)
 
         self.freq = freq
-
-        if compile is not None:
-            self.compile = compile
+        self.compile = compile
 
         for child in self.children[1:5]:
             child.observe(self.text, 'value')
@@ -131,9 +129,6 @@ class ExpenseBar(widgets.HBox):
 
     @compile.setter
     def compile(self, f):
-        if f is None:
-            f = self.freq
-
         if f not in self.compile_field.options:
             self.compile_field.options = list(self.compile_field.options) + [f]
         self.compile_field.value = f
