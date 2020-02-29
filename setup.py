@@ -7,13 +7,12 @@ setup(
     author='John Lancaster',
     author_email='lancaster.js@gmail.com',
     install_requires=[
-        'pandas',
         'matplotlib',
+        'pandas',
         'pyyaml',
-        'dash',
-        'dash-bootstrap-components',
-        'Flask-Session',
-        'python-memcached'
+        'jupyter',
+        'qgrid',
+        'pyperclip',
     ],
     packages=find_packages()
 )
