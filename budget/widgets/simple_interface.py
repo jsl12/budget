@@ -75,7 +75,7 @@ class SimpleInterface:
             lambda *args: self.print_output(self.drop_selected_note, self.note_table.get_selected_df())
         )
 
-        self.note_table =   qgrid.show_grid(self.bd.df_note_search('')[self.col_order[:-1] + ['Note']], **qgrid_opts)
+        self.note_table =   qgrid.show_grid(self.bd.note_search('')[self.col_order[:-1] + ['Note']], **qgrid_opts)
 
         self.interface = widgets.VBox(
             children=[

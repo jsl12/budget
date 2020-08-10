@@ -12,15 +12,25 @@ import yaml
 
 from . import processing
 from . import utils
-from .load import Loader
+from .load import CSVLoader
 from .notes import NoteManager
-from .notes.note import Category, Note
+from .notes.note import Note
 
+LOGGER = logging.getLogger(__name__)
 
 class BudgetData:
     SQL_DF_TABLE = 'transactions'
     SQL_SEL_TABLE = 'selections'
     DF_DATE_COL = 'Date'
+
+    def __init__(self, yaml_path: str):
+        self.yaml_path = Path(yaml_path)
+        if not self.yaml_path.is_absolute():
+            self.yaml_path = self.yaml_path.resolve()
+        self.note_manager = NoteManager()
+
+        self.RENDER_DROP_ID_COL = True
+        self.RENDER_SORT = True
 
     def __eq__(self, other):
         if isinstance(other, str):
@@ -74,22 +84,6 @@ class BudgetData:
 
         raise TypeError(f'Invalid selection: {type(input)}: {input}')
 
-    def __init__(self, yaml_path: str):
-        self.yaml_path = Path(yaml_path)
-        if not self.yaml_path.is_absolute():
-            self.yaml_path = self.yaml_path.resolve()
-        self.note_manager = NoteManager()
-        self.logger = logging.getLogger(__name__)
-
-        self.RENDER_DROP_ID_COL = True
-        self.RENDER_SORT = True
-
-    def debug(self, *args, **kwargs):
-        self.logger.debug(*args, **kwargs)
-
-    def info(self, *args, **kwargs):
-        self.logger.info(*args, **kwargs)
-
     @property
     def cfg(self) -> Dict:
         with self.yaml_path.open('r') as file:
@@ -140,14 +134,16 @@ class BudgetData:
 
     @property
     def unselected(self) -> pd.DataFrame:
-        return ~self._sel.any(axis=1) & ~self._df['id'].isin(
-            # ids of notes that have a Category note attached
-            self.note_manager.get_notes_by_type(Category).apply(lambda n: n.id)
-        )
+        return ~self._sel.any(axis=1) & ~self._df['id'].isin(self._notes.index)
 
     @property
     def notes(self) -> pd.Series:
-        return self.note_manager.notes.map(lambda n: n.note)
+        # return self.note_manager.notes.map(lambda n: n.note)
+        ids = self.note_manager.notes.index.to_series()
+        res = ids.apply(lambda v: self.find_by_id(v))
+        res['Note'] = self.note_manager.notes.apply(lambda n: n.note)
+        res = res.set_index('Date').drop('id', axis=1).sort_index(ascending=False)
+        return res
 
     @property
     def _notes(self) -> pd.Series:
@@ -155,10 +151,10 @@ class BudgetData:
 
     @property
     def db_path(self) -> Path:
-        p = Path(self.cfg['Loading']['db'])
-        if not p.is_absolute():
-            p = self.yaml_path.parents[0] / p
-        return p
+        res = Path(self.cfg['Loading']['db'])
+        if not res.is_absolute():
+            res = self.yaml_path.parents[0] / res
+        return res
 
     def hash_transactions(self, df: pd.DataFrame = None) -> pd.DataFrame:
         if df is None:
@@ -167,11 +163,14 @@ class BudgetData:
         return df
 
     def load_csv(self):
-        self.debug(f'Loading CSV files from {self.yaml_path.name}')
-        self._df = Loader(self.cfg['Loading']['Accounts']).load_all_accounts()
+        LOGGER.debug(f'Loading CSV files from {self.yaml_path.name}')
+        self._df = CSVLoader(
+            accounts_cfg=self.cfg['Loading']['Accounts'],
+            base_path=Path(self.cfg['Loading']['base'])
+        ).load_all_accounts()
 
     def process_categories(self):
-        self.debug(f'Processing selections as defined in {self.yaml_path.name}')
+        LOGGER.debug(f'Processing selections as defined in {self.yaml_path.name}')
         # Warnings need to be filtered out because there's groups in the regex matching down in there
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
@@ -184,7 +183,7 @@ class BudgetData:
                 )
             )
         self._df['Category'] = self.categorization
-        self.debug('Done')
+        LOGGER.debug('Done')
 
     def sql_context(self, path=None):
         if path is None:
@@ -195,12 +194,11 @@ class BudgetData:
         except:
             raise
         else:
-            self.debug(f'Opened SQL connection to\n{path.resolve()}')
+            LOGGER.debug(f'Opened SQL connection to\n{path.resolve()}')
             return connection
 
     def save_sql(self, path=None):
-        if isinstance(path, str):
-            path = Path(path)
+        path = Path(path) if isinstance(path, str) else path
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             with self.sql_context(path) as con:
@@ -209,8 +207,7 @@ class BudgetData:
                 self.note_manager.save_notes(con)
 
     def load_sql(self, path=None, notes=True):
-        if isinstance(path, str):
-            path = Path(path)
+        path = Path(path) if isinstance(path, str) else path
         with self.sql_context(path) as con:
             kwargs = {
                 'con': con,
@@ -223,7 +220,7 @@ class BudgetData:
 
             if notes:
                 self.note_manager.load_notes(con)
-        self.debug(f'left sql connection context')
+        LOGGER.debug(f'left sql connection context')
 
     def update_sql(self):
         '''
@@ -294,7 +291,7 @@ class BudgetData:
             if isinstance(df, pd.Series):
                 df = pd.DataFrame(df).transpose()
 
-            self.debug(f'Starting render of transaction DataFrame')
+            LOGGER.debug(f'Starting render of transaction DataFrame')
 
             if category is not None:
                 # Append based on notes that involve the category
@@ -310,7 +307,7 @@ class BudgetData:
             exc = self.exclude
             if exc is not None:
                 for excluded_note in exc:
-                    df = df[~df['id'].isin(self.notes[self.notes.str.contains(excluded_note)].index.values)]
+                    df = df[~df['id'].isin(self.note_manager.contains(excluded_note).index.values)]
 
             # Apply all the notes
             df = self.note_manager.apply_notes(df, category)
@@ -324,7 +321,7 @@ class BudgetData:
             if sort:
                 df = df.sort_index()
 
-            self.debug(f'Done')
+            LOGGER.debug(f'Done')
             return df
 
     def df_from_cat_notes(self, category: str) -> pd.DataFrame:
@@ -368,33 +365,31 @@ class BudgetData:
         self.note_manager.drop_duplicates()
 
     def find_by_id(self, id_to_find: str) -> pd.Series:
-        return self._df.reset_index().set_index('id', drop=False).loc[id_to_find]
-
-    def df_from_ids(self, ids: List[str]) -> pd.DataFrame:
-        if isinstance(ids, str):
-            ids = [ids]
-        df = pd.DataFrame([self.find_by_id(i) for i in ids])
         try:
-            return df.set_index('Date')
-        except KeyError:
-            # this will happen if the DataFrame is empty
-            return None
+            return self._df.reset_index().set_index('id', drop=False).loc[id_to_find]
+        except KeyError as e:
+            raise KeyError(f'{id_to_find} not found in transactions')
 
-    def df_note_search(self, query: str) -> pd.DataFrame:
-        note_mask = self.notes.str.contains(query, case=False)
-        notes = self._notes[note_mask]
+    def df_from_ids(self, ids) -> pd.DataFrame:
+        return pd.Series(ids).apply(lambda id: self.find_by_id(id)).set_index('Date')
+
+    def note_search(self, query: str) -> pd.DataFrame:
+        notes = self.note_manager.contains(query, text=True)
         df = self.df_from_ids(notes.index)
         try:
-            df['Note'] = [n.note for n in notes]
+            df['Note'] = notes.values
         except TypeError:
             # Happens when no matching notes are found
             return pd.DataFrame(columns=self.df.columns.tolist() + ['Note'])
         else:
             return df.drop('id', axis=1).sort_index(ascending=False)
 
+    def note_total(self, query: str):
+        return self.df_from_ids(self.note_manager.contains(query).index.drop_duplicates().values)['Amount'].sum()
+
     def note_df(self, df: pd.DataFrame) -> pd.DataFrame:
         try:
-            directly_attached_note_ids= df['id'][df['id'].isin(self.notes.index)].values
+            directly_attached_note_ids= df['id'][df['id'].isin(self.note_manager.notes.index)].values
             linked_note_ids = self.note_manager.linked_ids(df)
             ids = np.union1d(
                 directly_attached_note_ids,

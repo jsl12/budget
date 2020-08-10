@@ -18,7 +18,7 @@ class NoteSearch(widgets.VBox):
                 layout=bar_layout
             ),
             widgets.Output(),
-            qgrid.show_grid(self.bd.df_note_search(''), **qgrid_opts)
+            qgrid.show_grid(self.bd.note_search(''), **qgrid_opts)
         ]
         super().__init__(*args, **kwargs)
         self.children[0].children[-1].observe(self.render, 'value')
@@ -37,7 +37,7 @@ class NoteSearch(widgets.VBox):
 
     def render(self, *args):
         query = self.search.value
-        df = self.bd.df_note_search(query)
+        df = self.bd.note_search(query)
         if df is not None:
             self.table.df = df
         else:

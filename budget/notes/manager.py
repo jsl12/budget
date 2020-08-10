@@ -1,5 +1,6 @@
-import re
 import logging
+import re
+import sqlite3
 from dataclasses import dataclass
 from typing import List
 
@@ -10,6 +11,19 @@ from .note import Note, Link, Category
 from .split import SplitNote
 
 NOTE_PARSE_REGEX = re.compile('id=\'([\d\w]+)\', note=\'([\d\w :,]+)\'')
+
+def quickload_notes(path):
+    with sqlite3.connect(path) as conn:
+        return (
+            NoteManager()
+            .load_notes(con=conn)
+        )
+
+def quicksave_notes(path, note_df):
+    nm = NoteManager()
+    nm.notes = note_df
+    with sqlite3.connect(path) as conn:
+        nm.save_notes(con=conn)
 
 @dataclass
 class NoteManager:
@@ -54,6 +68,7 @@ class NoteManager:
             pass
         # Assign to attribute
         self.notes = notes
+        return notes
 
     def save_notes(self, con):
         self.notes.map(repr).to_sql(name=self.SQL_NOTE_TABLE, con=con, if_exists='replace')
@@ -204,3 +219,15 @@ class NoteManager:
 
     def re_parse(self):
         self.notes = self.notes.map(lambda n: self.parse_note(n.id, n.note))
+
+    @property
+    def note_text(self) -> pd.Series:
+        res = self.notes.apply(lambda n: n.note)
+        res.name = 'note text'
+        return res
+
+    def contains(self, input: str, case: bool = False, text: bool = False) -> pd.Series:
+        res = self.notes[self.note_text.str.contains(input, case=case)]
+        if text:
+            res = res.apply(lambda n: n.note)
+        return res
