@@ -231,3 +231,8 @@ class NoteManager:
         if text:
             res = res.apply(lambda n: n.note)
         return res
+
+    @property
+    def tagged_categories(self) -> pd.Series:
+        # returns a Series of the unique categories in Category notes
+        return self.get_notes_by_type(Category).apply(lambda n: n.category).drop_duplicates()
