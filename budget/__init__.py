@@ -1,4 +1,4 @@
-from . import widgets
+from . import widgets, utils
 from .data import BudgetData
 from .load import CSVLoader
 from .notes import Note

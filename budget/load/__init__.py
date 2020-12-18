@@ -1,1 +1,2 @@
-from .csv import CSVLoader, load_csv
+from .csv import CSVLoader
+from .df import load_csv

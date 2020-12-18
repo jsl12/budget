@@ -1,9 +1,8 @@
 import logging
 import re
-import sqlite3
-from dataclasses import dataclass
 from typing import List
 
+import numpy as np
 import pandas as pd
 
 from . import note, split
@@ -12,46 +11,37 @@ from .split import SplitNote
 
 NOTE_PARSE_REGEX = re.compile('id=\'([\d\w]+)\', note=\'([\d\w :,]+)\'')
 
-def quickload_notes(path):
-    with sqlite3.connect(path) as conn:
-        return (
-            NoteManager()
-            .load_notes(con=conn)
-        )
-
-def quicksave_notes(path, note_df):
-    nm = NoteManager()
-    nm.notes = note_df
-    with sqlite3.connect(path) as conn:
-        nm.save_notes(con=conn)
-
-@dataclass
 class NoteManager:
+    """Class to handle higher-level :class:`~budget.Note` manipulation
+
+    Attributes
+    ----------
+    notes : :class:`~pandas.DataFrame`
+        :class:`~pandas.DataFrame` of the :class:`~budget.Note` objects. `Index` is the :class:`str` ID of the
+        transaction that each :class:`~budget.Note` is linked to
+
+    """
     SQL_NOTE_TABLE = 'notes'
 
-    def __post_init__(self):
+    def __init__(self):
         self.notes = pd.Series(name='note', dtype='object')
         self.logger = logging.getLogger(__name__)
 
-    def validate_notes(self, ids: pd.Series):
-        return self.notes.map(lambda n: n.id).isin(ids).all()
+    def load_notes(self, con) -> pd.Series:
+        """Loads the :class:`~budget.Note` :class:`~pandas.Series` using a connection to a SQL database using
 
-    def add_note(self, id, note, drop_dups=True):
-        n = self.parse_note(id, note)
-        self.notes = self.notes.append([pd.Series([n], index=[n.id])])
-        if drop_dups:
-            self.drop_duplicates()
 
-    def drop(self, id, note_text):
-        print(f'Dropping note from {id}: {note_text}')
-        self.notes = self.notes[~self.notes.apply(
-            lambda n: (n.note == note_text) and (n.id == id)
-        )]
 
-    def drop_duplicates(self):
-        self.notes = self.notes[~self.notes.map(repr).duplicated()]
+        Parameters
+        ----------
+        con : SQLAlchemy connectable, :class:`str`, or :mod:`sqlite3` connection
+            SQL connection
 
-    def load_notes(self, con):
+        Returns
+        -------
+        :class:`~pandas.Series`
+        """
+
         # Read the whole table of notes
         notes = pd.read_sql_query(sql=f'select * from {self.SQL_NOTE_TABLE}', con=con)
 
@@ -70,30 +60,183 @@ class NoteManager:
         self.notes = notes
         return notes
 
+    @staticmethod
+    def eval_note(input: str) -> note.Note:
+        """Evaluates the :func:`repr` string, which reconstructs a :class:`~budget.Note` object
+
+        Parameters
+        ----------
+        input : :class:`str`
+            :class:`str` produced by the :func:`repr` of that object
+
+        Returns
+        -------
+        :class:`~budget.Note`
+        """
+
+        try:
+            return eval(input)
+        except (NameError, SyntaxError):
+            m = NOTE_PARSE_REGEX.search(input)
+            return NoteManager.parse_note(m.group(1), m.group(2))
+
+    @staticmethod
+    def parse_note(id: str, input: str, add_note_types=None) -> note.Note:
+        """Looks for the `tag` of each type of :class:`~budget.Note` in the `input` string, then constructs a new
+        :class:`~budget.Note` object when it finds one
+
+        Parameters
+        ----------
+        id : :class:`str`
+            id of the `Note` to create
+        input : :class:`str`
+            input :class:`str` to look in
+        add_note_types :
+            additional :class:`~budget.Note` types to parse
+
+        Returns
+        -------
+        :class:`~budget.Note`
+        """
+
+        note_types = [SplitNote, Link, Category]
+        if add_note_types is not None:
+            try:
+                note_types.append(add_note_types)
+            except:
+                note_types.extend(add_note_types)
+
+        if isinstance(input, str):
+            for nt in note_types:
+                try:
+                    if nt._tag in input:
+                        res = nt(id, input)
+                        break
+                except AttributeError:
+                    raise AttributeError('Notes must have a _tag attribute')
+            try:
+                return res
+            except NameError as e:
+                # res won't be set if none of the tags match
+                return Note(id, input)
+        else:
+            if isinstance(input, Note):
+                raise TypeError(f'\'{input}\' is already a {type(input)}')
+            else:
+                raise TypeError(f'unknown type of note: {type(input)}')
+
+    def validate_notes(self, ids: pd.Series) -> bool:
+        """Checks to make sure that all of the :class:`~budget.Note`s are contained in the ids
+
+        Parameters
+        ----------
+        ids : set or like-like
+            :class:`list` or something that can be used in :meth:`~pandas.Series.isin`
+
+        Returns
+        -------
+        bool
+            `True` if all of the `Notes` in the :class:`~budget.notes.NoteManager` are in the given list of IDs
+        """
+
+        return self.notes.map(lambda n: n.id).isin(ids).all()
+
+    def add_note(self, id: str, note: str, drop_dups: bool = True):
+        """Parses a string into a :class:`~budget.Note` object and adds it to the :class:`~budget.notes.NoteManager` using
+        :class:`~pandas.Series.append` and optionally uses :class:`~pandas.Series.drop_duplicates`
+
+        Parameters
+        ----------
+        id : str
+            id of the transaction to attach the :class:`~budget.Note` to
+        note : str
+            input string used to create the :class:`~budget.Note` object
+        drop_dups : bool
+            Whether to drop the duplicate notes
+
+        """
+
+        n = self.parse_note(id, note)
+        self.notes = self.notes.append([pd.Series([n], index=[n.id])])
+        if drop_dups:
+            self.drop_duplicates()
+
+    def drop(self, id: str, note_text: str):
+        """Drops a specific :class:`~budget.Note` using its ID and text
+
+        Parameters
+        ----------
+        id : str
+            id of the note to drop
+        note_text : str
+            text of the note to drop
+        """
+
+        print(f'Dropping note from {id}: {note_text}')
+        self.notes = self.notes[~self.notes.apply(
+            lambda n: (n.note == note_text) and (n.id == id)
+        )]
+
+    def drop_duplicates(self):
+        """Removes duplicate `Notes` in the :class:`~budget.notes.NoteManager`
+        """
+
+        self.notes = self.notes[~self.notes.map(repr).duplicated()]
+
     def save_notes(self, con):
         self.notes.map(repr).to_sql(name=self.SQL_NOTE_TABLE, con=con, if_exists='replace')
 
     def get_notes_by_id(self, ids: List[str]) -> pd.Series:
+        """Gets the notes that match the IDs in the given list
+
+        Parameters
+        ----------
+        ids : List[str]
+            list of ids to get the notes
+
+        Returns
+        -------
+        :class:`~pandas.Series`
+        """
+
         return self.notes[self.notes.apply(lambda n: n.id in ids)]
 
     def get_notes_by_type(self, typ: type) -> pd.Series:
+        """Gets the notes that match the given type
+
+        Parameters
+        ----------
+        typ : type
+            type of :class:`~budget.Note` to get
+
+        Returns
+        -------
+        :class:`~pandas.Series`
+        """
+
         # doesn't use isinstance() to prevent subtypes from being selected
         return self.notes[self.notes.apply(lambda n: type(n) is typ)]
 
-    def manual_ids(self, cat: str) -> pd.Series:
-        """
-        Gets ids of transactions that have been manually categorized as the given category
+    def manual_ids(self, cat: str) -> np.ndarray:
+        """Gets ids of transactions that have been manually categorized as the given category
 
-        :param cat:
-        :return:
+        Parameters
+        ----------
+        cat : str
+            category of transactions to get IDs for
+
+        Returns
+        -------
+        :class:`~numpy.ndarray`
         """
+
         return self.notes[
             # select from notes
             self.notes.apply(
                 # the ones which are both a Category type and have a matching categorization
                 lambda n: isinstance(n, note.Category) and n.category == cat
             )
-        ].apply(lambda n: n.id)
+        ].apply(lambda n: n.id).values
 
     def split_ids(self, cat: str) -> pd.Series:
         return self.notes[
@@ -105,16 +248,18 @@ class NoteManager:
         # convert to the value of the id attribute of each note
         ].apply(lambda n: n.id)
 
-    def linked_ids(self, df: pd.DataFrame) -> pd.Series:
-        """
-        Gets ids of transactions that target those in the given DataFrame
-        Example:
+    def linked_ids(self, df: pd.DataFrame) -> np.ndarray:
+        """Gets ids of transactions that target those in the given DataFrame
+
+        Example
             Transactions A and B are both linked to transaction C, which appears in the given DataFrame
             Returns a Series of ids that include the ids of A and B
 
-        :param df:
-        :return:
+        Returns
+        -------
+        :class:`~numpy.ndarray`: str
         """
+
         return self.notes[
             # select from notes
             self.notes.apply(
@@ -125,13 +270,22 @@ class NoteManager:
         ].apply(lambda n: n.id).values
 
     def apply_linked(self, df: pd.DataFrame) -> pd.DataFrame:
-        """
-        Applies Link notes in the given DataFrame.
-        The DataFrame needs to include both the original transactions and the ones linked to them
+        """Applies Link notes in the given DataFrame, adding the value of each linked transaction onto the one it targets
+        
+        The DataFrame needs to include both the original transactions and the ones linked to them. The values of the linked
+        transactions will be set to 0 as they are added onto the target transaction
 
-        :param df:
-        :return:
+        Parameters
+        ----------
+        df : :class:`~pandas.DataFrame`
+            transactions to apply the linked notes to
+
+        Returns
+        -------
+        :class:`~pandas.DataFrame`
+            :class:`~pandas.DataFrame` of the modified transactions
         """
+
         link_notes = self.get_notes_by_type(note.Link)
         source_in_df = link_notes.apply(lambda n: n.id in df['id'].values)
         target_in_df = link_notes.apply(lambda n: n.target in df['id'].values)
@@ -180,42 +334,6 @@ class NoteManager:
         df = self.apply_linked(df)
         df = self.apply_split(df, cat)
         return df
-
-    @staticmethod
-    def eval_note(input):
-        try:
-            return eval(input)
-        except (NameError, SyntaxError):
-            m = NOTE_PARSE_REGEX.search(input)
-            return NoteManager.parse_note(m.group(1), m.group(2))
-
-    @staticmethod
-    def parse_note(id: str, input: str, add_note_types=None):
-        note_types = [SplitNote, Link, Category]
-        if add_note_types is not None:
-            try:
-                note_types.append(add_note_types)
-            except:
-                note_types.extend(add_note_types)
-
-        if isinstance(input, str):
-            for nt in note_types:
-                try:
-                    if nt._tag in input:
-                        res = nt(id, input)
-                        break
-                except AttributeError:
-                    raise AttributeError('Notes must have a _tag attribute')
-            try:
-                return res
-            except NameError as e:
-                # res won't be set if none of the tags match
-                return Note(id, input)
-        else:
-            if isinstance(input, Note):
-                raise TypeError(f'\'{input}\' is already a {type(input)}')
-            else:
-                raise TypeError(f'unknown type of note: {type(input)}')
 
     def re_parse(self):
         self.notes = self.notes.map(lambda n: self.parse_note(n.id, n.note))

@@ -6,3 +6,6 @@ qgrid
 pyperclip
 selenium
 ipywidgets
+sphinx
+numpydoc
+sphinxcontrib-napoleon

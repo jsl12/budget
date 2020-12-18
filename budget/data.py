@@ -19,11 +19,44 @@ from .notes.note import Note
 LOGGER = logging.getLogger(__name__)
 
 class BudgetData:
+    """Container class for the transactions and notes
+
+    Created with a ``yaml`` file for configuration
+
+    Can load from:
+        - CSV files
+        - `sqlite3` database files
+    Can save to:
+        - `sqlite3` database files
+
+
+    Attributes
+    ----------
+    yaml_path : str or :class:`pathlib.Path`
+        path to the `yaml` configuration file
+    note_manager : :any:`NoteManager<budget.notes.manager.NoteManager>`
+        a `NoteManager` instance to handle high level operations with `Note` objects
+    SQL_DF_TABLE : str
+        name for the transaction table in the SQL database
+    SQL_SEL_TABLE : str
+        name for the selections table in the SQL database
+    DF_DATE_COL : str
+        name for the date column in the SQL database
+    """
     SQL_DF_TABLE = 'transactions'
     SQL_SEL_TABLE = 'selections'
     DF_DATE_COL = 'Date'
 
     def __init__(self, yaml_path: str):
+        """
+        Initializes the :class:`budget.BudgetData` object from a yaml file
+
+        Parameters
+        ----------
+        yaml_path : str
+            path to the yaml configuration file
+
+        """
         self.yaml_path = Path(yaml_path)
         if not self.yaml_path.is_absolute():
             self.yaml_path = self.yaml_path.resolve()
@@ -86,11 +119,24 @@ class BudgetData:
 
     @property
     def cfg(self) -> Dict:
+        """Loads and returns the configuration `dict` from the yaml file used to create the :class:`budget.BudgetData`
+        instance
+
+        Returns
+        -------
+        dict
+        """
         with self.yaml_path.open('r') as file:
             return yaml.load(file, Loader=yaml.SafeLoader)
 
     @property
     def categories(self) -> Dict:
+        """
+
+        Returns
+        -------
+        dict
+        """
         return self.cfg['Categories']
 
     @property
@@ -102,6 +148,12 @@ class BudgetData:
 
     @property
     def df(self) -> pd.DataFrame:
+        """
+
+        Returns
+        -------
+        :pandas_api:`pandas.DataFrame`
+        """
         if not hasattr(self, '_df'):
             self.load_sql()
         if 'id' in self._df.columns:
@@ -163,6 +215,12 @@ class BudgetData:
         return df
 
     def load_csv(self):
+        """Loads transactions from all the accounts into a single :class:`~pandas.DataFrame`
+
+        Returns
+        -------
+
+        """
         LOGGER.debug(f'Loading CSV files from {self.yaml_path.name}')
         self._df = CSVLoader(
             accounts_cfg=self.cfg['Loading']['Accounts'],
@@ -170,6 +228,12 @@ class BudgetData:
         ).load_all_accounts()
 
     def process_categories(self):
+        """Processes the categories using :func:`~budget.processing.gen_mask_tree` and
+        :func:`~budget.utils.flatten_mask_tree`.
+
+        This results in
+
+        """
         LOGGER.debug(f'Processing selections as defined in {self.yaml_path.name}')
         # Warnings need to be filtered out because there's groups in the regex matching down in there
         with warnings.catch_warnings():

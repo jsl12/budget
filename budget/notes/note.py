@@ -4,6 +4,16 @@ from dataclasses import dataclass
 
 @dataclass
 class Note:
+    """Base class for various notes. Contains the mechanics for some regex matching of the contents
+
+    Attributes
+    ----------
+    id : str
+        id of the transaction to associate the Note with
+    note : str
+        content of the note
+    """
+
     id: str
     note: str
 
