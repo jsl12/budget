@@ -3,10 +3,9 @@ import unittest
 from pathlib import Path
 from unittest import TestCase
 
-import gen
 import pandas as pd
 
-import budget.load.df
+import gen
 
 logging.basicConfig(level=logging.DEBUG)
 
@@ -17,7 +16,7 @@ class LoaderTest(TestCase):
         self.bd.yaml_path = Path(r'..\examples\user_config.yaml')
 
     def test_loader(self):
-        budget.load.df.load_csv()
+        self.bd.load_csv()
         self.assertIsInstance(self.bd._df, pd.DataFrame)
 
 if __name__ == '__main__':

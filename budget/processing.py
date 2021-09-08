@@ -135,7 +135,7 @@ def sum_duplicates(df: pd.DataFrame) -> pd.DataFrame:
     # https://www.dataquest.io/blog/settingwithcopywarning/
     res = df.drop_duplicates(keep='first').copy()
     for i, row in unique_dups.iterrows():
-        vals = dups[dups == row].sum()
+        vals = dups[dups == row].select_dtypes('number').sum()
         res.loc[i, vals.index] = vals
 
     res = res.set_index(index_name).sort_index()

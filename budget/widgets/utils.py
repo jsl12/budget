@@ -2,7 +2,7 @@ import pandas as pd
 import pyperclip
 
 from ..data import BudgetData
-from ..utils import hash
+from ..load import hash
 
 
 def try_dec(func):

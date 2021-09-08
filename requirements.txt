@@ -2,10 +2,16 @@ matplotlib
 pandas
 pyyaml
 jupyter
+jupyterlab
 qgrid
 pyperclip
 selenium
 ipywidgets
+jupyterlab_widgets
 sphinx
 numpydoc
 sphinxcontrib-napoleon
+tkintertable
+tkcalendar
+# jupyter labextension install @j123npm/qgrid2
+# https://github.com/quantopian/qgrid/issues/350

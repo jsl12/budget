@@ -1,6 +1,6 @@
 from . import widgets, utils
+from .app import BudgetApp
 from .data import BudgetData
-from .load import CSVLoader
 from .notes import Note
 from .plan import BudgetPlan, SimplePlan, Expense
 from .processing import proc_query

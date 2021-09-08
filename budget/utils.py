@@ -1,6 +1,6 @@
-import hashlib
-from typing import Union, List, Dict, Callable
 from datetime import timedelta
+from typing import Union, List, Dict, Callable
+
 import pandas as pd
 
 
@@ -119,24 +119,3 @@ def apply_func(obj: Union[List, Dict], func: Callable):
         return [comp_helper(item) for item in obj]
     else:
         return func(obj)
-
-
-def hash(row: pd.Series) -> str:
-    """Uses the builtin :mod:`hashlib` to make a `md5` hash object, which is then updated with the transaction date
-    (:class:`str` in ``%Y-%m-%d`` format), ``Description`` and ``Amount`` values. Used to uniquely identify transactions
-
-    Parameters
-    ----------
-    row : :class:`~pandas.Series`
-        row from the transaction :class:`~pandas.DataFrame`. The :class:`~pandas.DataFrame` needs to have a
-        :class:`~pandas.DatetimeIndex` and ``Description`` and ``Amount`` columns
-
-    Returns
-    -------
-    str : :meth:`hashlib.hash.hexdigest`
-    """
-    m = hashlib.md5()
-    m.update(bytes(row.name.strftime('%Y-%m-%d'), encoding='UTF-8', errors='strict'))
-    m.update(bytes(row['Description'], encoding='UTF-8', errors='strict'))
-    m.update(bytes(int(row['Amount'] * 100).to_bytes(24, byteorder='big', signed=True)))
-    return m.hexdigest()

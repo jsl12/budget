@@ -10,13 +10,14 @@ import numpy as np
 import pandas as pd
 import yaml
 
-from . import processing
-from . import utils
-from .load import CSVLoader
-from .notes import NoteManager
+from .load import load_all_accounts, hash
+from .notes.manager import NoteManager
 from .notes.note import Note
+from .processing import gen_mask_tree, flatten_mask_tree
+from .utils import report
 
 LOGGER = logging.getLogger(__name__)
+
 
 class BudgetData:
     """Container class for the transactions and notes
@@ -203,15 +204,16 @@ class BudgetData:
 
     @property
     def db_path(self) -> Path:
-        res = Path(self.cfg['Loading']['db'])
-        if not res.is_absolute():
-            res = self.yaml_path.parents[0] / res
-        return res
+        if 'Loading' in self.cfg:
+            res = Path(self.cfg['Loading']['db'])
+            if not res.is_absolute():
+                res = self.yaml_path.parents[0] / res
+            return res
 
     def hash_transactions(self, df: pd.DataFrame = None) -> pd.DataFrame:
         if df is None:
             df = self._df
-        df['id'] = df.apply(utils.hash, axis=1)
+        df['id'] = df.apply(hash, axis=1)
         return df
 
     def load_csv(self):
@@ -222,10 +224,12 @@ class BudgetData:
 
         """
         LOGGER.debug(f'Loading CSV files from {self.yaml_path.name}')
-        self._df = CSVLoader(
-            accounts_cfg=self.cfg['Loading']['Accounts'],
-            base_path=Path(self.cfg['Loading']['base'])
-        ).load_all_accounts()
+        self._df = load_all_accounts(
+            cfg=self.cfg['Loading']['Accounts'],
+            base=Path(self.cfg['Loading']['base'])
+        )
+        self.process_categories()
+        return self._df
 
     def process_categories(self):
         """Processes the categories using :func:`~budget.processing.gen_mask_tree` and
@@ -239,8 +243,8 @@ class BudgetData:
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             self._sel = pd.DataFrame(
-                processing.flatten_mask_tree(
-                    processing.gen_mask_tree(
+                flatten_mask_tree(
+                    gen_mask_tree(
                         df=self.df,
                         cats=self.categories
                     )
@@ -256,6 +260,7 @@ class BudgetData:
         try:
             connection = sqlite3.connect(path)
         except:
+            LOGGER.error(f'Problem opening SQL connection to {path}')
             raise
         else:
             LOGGER.debug(f'Opened SQL connection to\n{path.resolve()}')
@@ -314,7 +319,7 @@ class BudgetData:
                 raise TypeError(f'{query} couldn\'t be passed to pd.Series.str.contains()')
 
     def search_multiple(self, queries: List[str]) -> pd.Series:
-        return reduce(lambda a,b: a | b, [self.search(query) for query in queries])
+        return reduce(lambda a, b: a | b, [self.search(query) for query in queries])
 
     def search_notes(self, input) -> pd.DataFrame:
         if isinstance(input, str):
@@ -331,13 +336,13 @@ class BudgetData:
 
         try:
             res = pd.concat(
-                [self[sel].groupby(self[sel].index).sum().iloc[:,0].rename(sel) for sel in selections],
+                [self[sel].groupby(self[sel].index).sum().iloc[:, 0].rename(sel) for sel in selections],
                 axis=1
             ).fillna(0)
         except KeyError as e:
             raise KeyError(f'invalid category: {e.args[0]}')
 
-        return utils.report(df=res, freq=freq, avg=avg)
+        return report(df=res, freq=freq, avg=avg)
 
     def render(self, df: pd.DataFrame, category: str = None, drop_id=None, sort=None) -> pd.DataFrame:
         """
@@ -432,7 +437,8 @@ class BudgetData:
         try:
             return self._df.reset_index().set_index('id', drop=False).loc[id_to_find]
         except KeyError as e:
-            raise KeyError(f'{id_to_find} not found in transactions')
+            LOGGER.warning(f'{id_to_find} not found in transactions')
+            return pd.Series()
 
     def df_from_ids(self, ids) -> pd.DataFrame:
         return pd.Series(ids).apply(lambda id: self.find_by_id(id)).set_index('Date')
@@ -453,7 +459,7 @@ class BudgetData:
 
     def note_df(self, df: pd.DataFrame) -> pd.DataFrame:
         try:
-            directly_attached_note_ids= df['id'][df['id'].isin(self.note_manager.notes.index)].values
+            directly_attached_note_ids = df['id'][df['id'].isin(self.note_manager.notes.index)].values
             linked_note_ids = self.note_manager.linked_ids(df)
             ids = np.union1d(
                 directly_attached_note_ids,
@@ -464,16 +470,26 @@ class BudgetData:
             # this will also pick up multiple notes attached to a single transaction
             notes = self._notes.loc[ids]
         except KeyError:
-        #     happens when there are no notes
+            # happens when there are no notes
+            print('no notes')
             return pd.DataFrame(columns=df.columns)
         else:
-            res = self.df_from_ids(notes.index)
-
-            if res is not None:
+            try:
+                res = self.df_from_ids(notes.index)
+            except AttributeError:
+                # also happens when there are no notes
+                return pd.DataFrame(columns=df.columns.tolist() + ['Note'])
+            else:
                 res['Note'] = notes.apply(lambda n: n.note if isinstance(n, Note) else '').values
                 linked_targets = np.unique(self._notes.loc[linked_note_ids].apply(lambda n: n.target).values)
                 linked_sources = self._df[self.id.isin(linked_targets)]
                 res = res.append(linked_sources, sort=False)
                 return res.sort_index()
-            else:
-                return pd.DataFrame(columns=df.columns.tolist() + ['Note'])
+
+    @property
+    def orphaned_notes(self):
+        notes = self._notes
+        return notes[~notes.index.isin(self.id)]
+
+    def drop_orphan_notes(self):
+        return self.note_manager.drop_orphans(ids=self.id)

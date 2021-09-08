@@ -9,6 +9,7 @@ from . import note, split
 from .note import Note, Link, Category
 from .split import SplitNote
 
+LOGGER = logging.getLogger(__name__)
 NOTE_PARSE_REGEX = re.compile('id=\'([\d\w]+)\', note=\'([\d\w :,]+)\'')
 
 class NoteManager:
@@ -354,3 +355,8 @@ class NoteManager:
     def tagged_categories(self) -> pd.Series:
         # returns a Series of the unique categories in Category notes
         return self.get_notes_by_type(Category).apply(lambda n: n.category).drop_duplicates()
+
+    def drop_orphans(self, ids):
+        orphans = self.notes[~self.notes.index.isin(ids)]
+        self.notes = self.notes.drop(orphans.index)
+        LOGGER.debug(f'Dropped {orphans.shape[0]} orphaned messages')
