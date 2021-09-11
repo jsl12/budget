@@ -4,8 +4,14 @@ import re
 from pathlib import Path
 
 import pandas as pd
-
+import yaml
 LOGGER = logging.getLogger(__name__)
+
+
+def load_from_cfg_path(config_path: Path) -> pd.DataFrame:
+    with Path(config_path).open('r') as file:
+        cfg = yaml.load(file, Loader=yaml.SafeLoader)
+        return load_all_accounts(cfg['Loading']['Accounts'], Path(cfg['Loading']['base']))
 
 
 def load_all_accounts(cfg, base: Path):
@@ -21,7 +27,7 @@ def account_df_gen(cfg, base: Path):
             yield df
 
 
-def load_transactions(filepath: Path, **kwargs) -> pd.DataFrame:
+def load_transaction_file(filepath: Path, **kwargs) -> pd.DataFrame:
     LOGGER.debug(f'Loading from: {filepath.name}')
     df = pd.read_csv(filepath, **kwargs)
 
@@ -70,12 +76,12 @@ def hash(row: pd.Series) -> str:
 
 
 def load_chase(filepath: Path) -> pd.DataFrame:
-    return load_transactions(filepath)
+    return load_transaction_file(filepath)
 
 
 def load_barclays(filepath: Path) -> pd.DataFrame:
-    return load_transactions(filepath, header='infer', skiprows=4)
+    return load_transaction_file(filepath, header='infer', skiprows=4)
 
 
 def load_wells_fargo(filepath: Path) -> pd.DataFrame:
-    return load_transactions(filepath, names=['date', 'amount', '', 'comment', 'desc'])
+    return load_transaction_file(filepath, names=['date', 'amount', '', 'comment', 'desc'])
